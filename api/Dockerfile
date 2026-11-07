@@ -101,3 +101,7 @@ FROM base AS default
 # every vulnerability the image scan ever reported lived — none of them was in a package the
 # app uses. Gone from the published image; the coach target keeps npm for the Codex CLI.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+
+# Fork-only (railway branch): Railway builds the last stage and cannot pick a target, so this
+# makes the deployed image the `coach` one (Claude Agent SDK, for a `claude setup-token` Coach).
+FROM coach AS railway
