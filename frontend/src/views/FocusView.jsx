@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
 import { clampIncline, hasIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from '../lib/incline.js'
+import { byKcal, clampKcal, KCAL_MAX, KCAL_STEP } from '../lib/calories.js'
 import { exerciseNameClass, exerciseNameFor, t } from '../lib/i18n.js'
 import { fmtDate, fmtNum, fmtPlate } from '../lib/format.js'
 import { EFFORT, effortOf, modeOf } from '../lib/history.js'
@@ -338,8 +339,12 @@ export default function FocusView({
       <div data-testid="focus-set" data-tour="set" className={'focus-set' + (set.done ? ' complete' : '') + (locked ? ' locked' : '')}>
         {isSideSet(set) ? <div className="focus-sides">{sideFields('L')}{sideFields('R')}</div> : <>
           {mode === 'cardio' ? <>
-            <Stepper label={t('Duration (min)')} ariaLabel="duration" value={set.min || 0} step={1} decimal={false} disabled={readOnly}
-              onChange={value => onField(setIdx, 'min', value)} />
+            {/* Minutes or calories, whichever the interval is measured in (lib/calories.js). */}
+            {byKcal(entry.target)
+              ? <Stepper label={t('Calories')} ariaLabel="calories" value={set.kcal || 0} step={KCAL_STEP} max={KCAL_MAX} decimal={false} disabled={readOnly}
+                onChange={value => onField(setIdx, 'kcal', clampKcal(value))} />
+              : <Stepper label={t('Duration (min)')} ariaLabel="duration" value={set.min || 0} step={1} decimal={false} disabled={readOnly}
+                onChange={value => onField(setIdx, 'min', value)} />}
             {/* Stored in km/h, shown and typed in the profile's speed unit, as on every other
                 cardio input (lib/speed.js). */}
             <Stepper label={speedUnit === 'mph' ? t('Speed (mph)') : t('Speed (km/h)')} ariaLabel="speed" value={toSpeed(set.speed || 0, speedUnit)} step={0.5} disabled={readOnly}
