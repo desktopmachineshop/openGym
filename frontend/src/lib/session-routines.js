@@ -1,6 +1,7 @@
 import { uid } from './format.js'
 import { modeOf, defaultConfig, isPerSide, entryRoutineId, setsFromRows } from './history.js'
 import { isSideSet, isWarmupRow, hasCompletedWork, modeForEntry } from './workout-model.js'
+import { byKcal, clampKcal, isKcalSet } from './calories.js'
 
 // A saved workout is evidence of what was logged, not a live routine. Copy only its flat
 // exercise setup on this explicit action; finishing a workout never calls this helper.
@@ -76,7 +77,11 @@ function copiedEntry(entry, source) {
   const cfg = { ...defaults, ...target, id: entry?.id, sets: Math.max(1, setsFromRows({ ...defaults, ...target }, work.length) || 1), warmupSets: rows.filter(isWarmupRow).length }
   const mode = modeOf(cfg)
   if (mode === 'time' && row) Object.assign(cfg, { sec: row.sec ?? cfg.sec, weight: row.w ?? cfg.weight ?? 0 })
-  else if (mode === 'cardio' && row) Object.assign(cfg, { min: row.min ?? cfg.min, speed: row.speed ?? cfg.speed })
+  else if (mode === 'cardio' && row) {
+    // A calorie interval keeps its count and has no minutes (lib/calories.js).
+    if (byKcal(cfg)) { Object.assign(cfg, { kcal: isKcalSet(row) ? clampKcal(row.kcal) : cfg.kcal, speed: row.speed ?? cfg.speed }); delete cfg.min }
+    else Object.assign(cfg, { min: row.min ?? cfg.min, speed: row.speed ?? cfg.speed })
+  }
   else if (mode === 'reps') {
     const reps = row && isPerSide(cfg) ? perSideReps(row, cfg) : positive(row?.r)
     if (reps != null) cfg.reps = reps

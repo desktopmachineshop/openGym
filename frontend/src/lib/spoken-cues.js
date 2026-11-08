@@ -19,6 +19,7 @@ import { t, tn, tnf, exerciseNameFor } from './i18n-core.js'
 import { EXIDX } from './exercises.js'
 import { viewEntry, exUnitOf } from './ex-unit.js'
 import { speak, SPEECH_RATES, speechRateOf } from './speech.js'
+import { clampKcal, isKcalSet } from './calories.js'
 
 /** Whether cues are on for this profile, and a workout is running. */
 export const cuesOn = S => S?.spokenCues === true && !!S?.active
@@ -71,6 +72,8 @@ export function setCueText(S, entry, i, { name = null } = {}) {
   if (mode === 'cardio') {
     const min = Number(s.min) || 0
     if (min > 0) parts.push(tnf('{0} minute', '{0} minutes', min, fmtNum(min)))
+    // A calorie interval says its count (lib/calories.js).
+    else if (isKcalSet(s)) parts.push(t('{0} kcal', fmtNum(clampKcal(s.kcal))))
   } else if (mode === 'time') {
     if (w > 0) parts.push(weightWords(w, unit))
     const sec = Number(s.sec ?? entry.target?.sec) || 0

@@ -2114,6 +2114,10 @@ export default {
   // --- cardio: treadmill incline ---
   'Incline (%)': '坡度 (%)',
   '{0}% incline': '坡度 {0}%',
+  '{0} kcal': '{0} 大卡',
+  'kcal': '大卡',
+  'More calories than last time': '卡路里比上次多',
+  'Fewer calories than last time': '卡路里比上次少',
   // --- workout detail: Garmin .fit export ---
   'Export as .fit file': '匯出為 .fit 檔案',
   'Could not create the file': '無法建立檔案',
