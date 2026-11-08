@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
-// A cardio exercise's settings take a calorie count per interval (lib/calories.js), next to its
-// minutes and speed, and save it on the slot; 0 leaves calories uncounted.
+// A cardio exercise's settings choose how long an interval is: a time or a calorie count, one or
+// the other (lib/calories.js). The slot carries `min` or `kcal`, never both.
 import React, { act } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createRoot } from 'react-dom/client'
@@ -27,8 +27,11 @@ function open(ex, existing) {
     Object.getOwnPropertyDescriptor(el.constructor.prototype, 'value').set.call(el, value)
     el.dispatchEvent(new Event('input', { bubbles: true }))
   })
+  const lengths = () => [...host.querySelectorAll('.seg-len button')].map(b => b.textContent.trim())
+  const picked = () => host.querySelector('.seg-len button.on')?.textContent.trim()
+  const pick = label => act(() => [...host.querySelectorAll('.seg-len button')].find(b => b.textContent.trim() === label).click())
   const save = () => act(() => [...host.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save').click())
-  return { labels, field, type, save, onSave }
+  return { labels, field, type, save, onSave, lengths, picked, pick }
 }
 
 beforeEach(() => {
@@ -38,26 +41,39 @@ beforeEach(() => {
 })
 afterEach(() => { act(() => { mounted.splice(0).forEach(root => root.unmount()) }) })
 
-describe('calories in a cardio exercise\'s settings', () => {
-  it('offers Calories next to Minutes and Speed and saves it on the slot', () => {
+describe('time or calories in a cardio exercise\'s settings', () => {
+  it('offers Time or Calories, on Time by default, with Minutes and no Calories', () => {
     const v = open(EXIDX[ROWER], { sets: 4, min: 5, speed: 10 })
-    expect(v.labels()).toEqual(expect.arrayContaining(['Minutes', 'Calories']))
-    v.type(v.field('Calories'), '50')
+    expect(v.lengths()).toEqual(['Time', 'Calories'])
+    expect(v.picked()).toBe('Time')
+    expect(v.labels()).toContain('Minutes')
+    expect(v.labels()).not.toContain('Calories')
     v.save()
-    expect(v.onSave.mock.calls[0][0]).toMatchObject({ sets: 4, min: 5, speed: 10, kcal: 50 })
+    const saved = v.onSave.mock.calls[0][0]
+    expect(saved).toMatchObject({ sets: 4, min: 5, speed: 10 })
+    expect(saved).not.toHaveProperty('kcal')
   })
 
-  it('reopens with the saved count, and 0 leaves the key out', () => {
-    const v = open(EXIDX[ROWER], { sets: 4, min: 5, speed: 10, kcal: 50 })
+  it('Calories swaps Minutes for a count and saves it without minutes', () => {
+    const v = open(EXIDX[ROWER], { sets: 4, min: 5, speed: 10 })
+    v.pick('Calories')
+    expect(v.labels()).toContain('Calories')
+    expect(v.labels()).not.toContain('Minutes')
+    v.type(v.field('Calories'), '60')
+    v.save()
+    const saved = v.onSave.mock.calls[0][0]
+    expect(saved).toMatchObject({ sets: 4, kcal: 60, speed: 10 })
+    expect(saved).not.toHaveProperty('min')
+  })
+
+  it('reopens on Calories, and going back to Time drops the count', () => {
+    const v = open(EXIDX[ROWER], { sets: 4, kcal: 50, speed: 10 })
+    expect(v.picked()).toBe('Calories')
     expect(v.field('Calories').value).toBe('50')
-    v.type(v.field('Calories'), '0')
+    v.pick('Time')
     v.save()
-    expect(v.onSave.mock.calls[0][0]).not.toHaveProperty('kcal')
-  })
-
-  it('a slot that never set one keeps the shape it had', () => {
-    const v = open(EXIDX[ROWER], { sets: 1, min: 20, speed: 10 })
-    v.save()
-    expect(v.onSave.mock.calls[0][0]).not.toHaveProperty('kcal')
+    const saved = v.onSave.mock.calls[0][0]
+    expect(saved).toMatchObject({ sets: 4, min: 20, speed: 10 })
+    expect(saved).not.toHaveProperty('kcal')
   })
 })

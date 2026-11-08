@@ -1,14 +1,11 @@
 // Calories per cardio set: what the rower, bike or treadmill says you burned.
 //
-// A cardio set is minutes at a speed; `kcal` is the machine's calorie count on top of it, a whole
-// number on the set itself: { min: 10, speed: 0, kcal: 120, done: true }. Like the incline
-// (lib/incline.js) it is optional everywhere. A set without it is one nobody counted, exactly what
-// every set logged before this was, so nothing stored is rewritten and an older app that does not
-// know the key leaves it alone (api/sync-stamps.js keepKeys).
-//
-// The exercise's settings can plan a count per interval (`kcal` on the slot, "row 4 x 50 kcal").
-// That target is what turns the Calories column on in the workout; rows already carrying a count
-// keep it on whatever the plan says.
+// A cardio interval is as long as a time or as a calorie count, one or the other, chosen in the
+// exercise's settings. A timed one is minutes at a speed, as every cardio set always was; a calorie
+// one is the machine's count at a speed, with no minutes: { kcal: 50, speed: 10, done: true }, the
+// slot { sets: 4, kcal: 50, speed: 10 }. A slot with a count is a calorie one (byKcal), whatever
+// default minutes it may still carry. An older app that does not know the key leaves it alone
+// (api/sync-stamps.js keepKeys).
 
 // A long session on an air bike or a ski erg can pass 1,000; nothing a person does in one set
 // reaches 5,000, so a number beyond that is a typo.
@@ -32,8 +29,20 @@ export const hasKcal = s => clampKcal(s?.kcal) != null
 /** What a new row takes over from the set (or the plan) it follows: its count, when it had one. */
 export const kcalFrom = s => (hasKcal(s) ? { kcal: clampKcal(s.kcal) } : {})
 
-/** Whether a cardio exercise shows the Calories column: its plan counts them, or a row already has. */
-export const kcalShown = (target, sets) => hasKcal(target) || (Array.isArray(sets) && sets.some(hasKcal))
+/** Whether a cardio slot (or a session's target) measures its intervals in calories, not minutes. */
+export const byKcal = cfg => hasKcal(cfg)
+
+/** Whether a logged cardio set is a calorie one: a count and no minutes. */
+export const isKcalSet = s => hasKcal(s) && !(Number(s?.min) > 0)
+
+/**
+ * A new cardio row for a slot: its length in the slot's own measure (last time's when last time
+ * was measured the same way, else the plan's), and the speed and incline as before.
+ */
+export function cardioLength(cfg, prev) {
+  if (byKcal(cfg)) return { kcal: isKcalSet(prev) ? clampKcal(prev.kcal) : clampKcal(cfg.kcal) }
+  return { min: Number(prev?.min) > 0 ? prev.min : (cfg?.min || 20) }
+}
 
 /**
  * The calories a workout's done sets add up to: cardio sets with a count, warm-ups included

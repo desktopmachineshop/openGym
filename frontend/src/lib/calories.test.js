@@ -1,10 +1,13 @@
-// Calories per cardio set: optional on the set, planned per interval in the exercise's settings,
-// and carried everywhere a cardio set is read back, with the session's total in the summaries.
+// A cardio interval is as long as a time or a calorie count, one or the other (lib/calories.js):
+// a calorie slot and its sets carry `kcal` and no minutes, and everything that reads a cardio set
+// back reads it by its count, with the session's total in the summaries.
 import { describe, it, expect } from 'vitest'
-import { KCAL_MAX, clampKcal, hasKcal, kcalFrom, kcalShown, workoutKcal } from './calories.js'
-import { setLabel, buildSets, copyRowAt, exLine } from './history.js'
+import { KCAL_MAX, byKcal, cardioLength, clampKcal, hasKcal, isKcalSet, workoutKcal } from './calories.js'
+import { setLabel, buildSets, copyRowAt, exLine, insertWarmupRow, setsRepsOf } from './history.js'
 import { buildPlanBundle, parsePlan } from './plan-share.js'
 import { workoutText } from './workout-text.js'
+import { finishCardio } from './finish-compare.js'
+import { setTrend, trendLabel } from './set-trend.js'
 import { parseWorkoutCSV } from './import-csv.js'
 import { workoutRows, WORKOUT_COLUMNS } from './export-csv.js'
 
@@ -22,91 +25,124 @@ describe('clampKcal', () => {
   })
 })
 
-describe('a calorie count on a cardio set', () => {
-  it('knows which sets carry one and what a new row takes over', () => {
-    expect(hasKcal({ kcal: 50 })).toBe(true)
+describe('time or calories', () => {
+  it('a slot with a count is a calorie one, whatever minutes it still carries', () => {
+    expect(byKcal({ kcal: 50 })).toBe(true)
+    expect(byKcal({ kcal: 50, min: 20 })).toBe(true)
+    expect(byKcal({ min: 20 })).toBe(false)
+    expect(byKcal(undefined)).toBe(false)
+  })
+  it('a set is a calorie one when it has a count and no minutes', () => {
+    expect(isKcalSet({ kcal: 50, speed: 10 })).toBe(true)
+    expect(isKcalSet({ kcal: 50, min: 5 })).toBe(false)
+    expect(isKcalSet({ min: 5 })).toBe(false)
     expect(hasKcal({ kcal: 0 })).toBe(false)
-    expect(hasKcal(null)).toBe(false)
-    expect(kcalFrom({ kcal: 50 })).toEqual({ kcal: 50 })
-    expect(kcalFrom({})).toEqual({})
+  })
+  it('a new row takes its length in the slot\'s measure, last time\'s when it was measured the same way', () => {
+    expect(cardioLength({ kcal: 50 }, null)).toEqual({ kcal: 50 })
+    expect(cardioLength({ kcal: 50 }, { kcal: 62 })).toEqual({ kcal: 62 })
+    expect(cardioLength({ kcal: 50 }, { min: 12 })).toEqual({ kcal: 50 })
+    expect(cardioLength({ min: 20 }, { min: 12 })).toEqual({ min: 12 })
+    expect(cardioLength({ min: 20 }, { kcal: 62 })).toEqual({ min: 20 })
+    expect(cardioLength({}, null)).toEqual({ min: 20 })
+  })
+})
+
+describe('a calorie interval', () => {
+  it('reads by its count in the set label, the routine line and the sets line', () => {
+    expect(setLabel(ROWER, { kcal: 120, speed: 10 })).toBe('120 kcal @ 10 km/h')
+    expect(setLabel(ROWER, { kcal: 120 })).toBe('120 kcal')
+    expect(setLabel(TREADMILL, { kcal: 240, speed: 5, incline: 6 })).toBe('240 kcal @ 5 km/h · 6% incline')
+    expect(setLabel(ROWER, { min: 10, speed: 10 })).toBe('10 min @ 10 km/h')
+    expect(exLine({ id: ROWER, sets: 4, kcal: 50, speed: 10 }, 'kg')).toBe('4 × 50 kcal @ 10 km/h')
+    expect(exLine({ id: ROWER, sets: 4, min: 5, speed: 10 }, 'kg')).toBe('4 × 5 min @ 10 km/h')
+    expect(setsRepsOf({ id: ROWER, sets: 4, kcal: 50 })).toBe('4 × 50 kcal')
   })
 
-  it('shows the column when the plan counts calories or a row already has some', () => {
-    expect(kcalShown({ kcal: 50 }, [])).toBe(true)
-    expect(kcalShown({}, [{ min: 10 }, { min: 10, kcal: 90 }])).toBe(true)
-    expect(kcalShown({}, [{ min: 10 }])).toBe(false)
-    expect(kcalShown(undefined, undefined)).toBe(false)
+  it('builds its rows with a count and no minutes', () => {
+    const cfg = { id: ROWER, sets: 2, kcal: 50, speed: 10 }
+    const last = sets => ({ exWeights: {}, workouts: [{ id: 'w1', d: '2026-10-01', start: 0, end: 1, entries: [{ id: ROWER, target: { sets: 2, kcal: 50, speed: 10 }, sets }] }] })
+    expect(buildSets({ exWeights: {}, workouts: [] }, cfg)).toEqual([{ kcal: 50, speed: 10, done: false }, { kcal: 50, speed: 10, done: false }])
+    expect(buildSets(last([{ kcal: 62, speed: 11, done: true }]), cfg)).toEqual([{ kcal: 62, speed: 11, done: false }, { kcal: 62, speed: 11, done: false }])
+    // Last time it was timed: the count comes from the plan, never a minute.
+    expect(buildSets(last([{ min: 12, speed: 11, done: true }]), cfg)[0]).toEqual({ kcal: 50, speed: 11, done: false })
+    // And a timed slot never picks up a count.
+    expect(buildSets(last([{ kcal: 62, speed: 11, done: true }]), { id: ROWER, sets: 1, min: 20, speed: 10 })).toEqual([{ min: 20, speed: 11, done: false }])
   })
 
-  it('reads in the set label and the routine line, and an uncounted set reads as before', () => {
-    expect(setLabel(ROWER, { min: 10, speed: 2, kcal: 120 })).toBe('10 min @ 2 km/h · 120 kcal')
-    expect(setLabel(TREADMILL, { min: 30, speed: 5, incline: 6, kcal: 240 })).toBe('30 min @ 5 km/h · 6% incline · 240 kcal')
-    expect(setLabel(ROWER, { min: 10, speed: 2 })).toBe('10 min @ 2 km/h')
-    expect(exLine({ id: ROWER, sets: 4, min: 5, speed: 2, kcal: 50 }, 'kg')).toBe('4 × 5 min @ 2 km/h · 50 kcal')
+  it('warms up in the same measure, and copies onto a copied row', () => {
+    const rows = insertWarmupRow([{ kcal: 50, speed: 10, done: false }], 'cardio', { kcal: 50, speed: 10 })
+    expect(rows[0]).toMatchObject({ kcal: 50, speed: 10, phase: 'warmup' })
+    expect(rows[0]).not.toHaveProperty('min')
+    expect(copyRowAt([{ kcal: 62, speed: 10, done: true }], 0)[1]).toEqual({ kcal: 62, speed: 10, done: false })
   })
 
-  it('opens at last time\'s count, else the plan\'s, and copies onto a copied row', () => {
-    const cfg = { id: ROWER, sets: 1, min: 5, speed: 2, kcal: 50 }
-    const last = sets => ({ exWeights: {}, workouts: [{ id: 'w1', d: '2026-10-01', start: 0, end: 1, entries: [{ id: ROWER, target: { sets: 1, min: 5, speed: 2 }, sets }] }] })
-    expect(buildSets({ exWeights: {}, workouts: [] }, cfg)).toEqual([{ min: 5, speed: 2, kcal: 50, done: false }])
-    expect(buildSets(last([{ min: 5, speed: 2, kcal: 62, done: true }]), cfg)).toEqual([{ min: 5, speed: 2, kcal: 62, done: false }])
-    expect(buildSets({ exWeights: {}, workouts: [] }, { ...cfg, kcal: undefined })).toEqual([{ min: 5, speed: 2, done: false }])
-    expect(copyRowAt([{ min: 5, speed: 2, kcal: 62, done: true }], 0)[1]).toEqual({ min: 5, speed: 2, kcal: 62, done: false })
-  })
-
-  it('travels in a shared plan, clamped', () => {
-    const S = { unit: 'kg', customEx: [], routines: [{ id: 'r1', name: 'Row', ex: [{ id: ROWER, sets: 4, min: 5, speed: 2, kcal: 50 }] }] }
+  it('travels in a shared plan without minutes, clamped', () => {
+    const S = { unit: 'kg', customEx: [], routines: [{ id: 'r1', name: 'Row', ex: [{ id: ROWER, sets: 4, kcal: 50, speed: 10, min: 20 }] }] }
     const file = buildPlanBundle(S, 'Row')
     expect(file.routines[0].ex[0].kcal).toBe(50)
+    expect(file.routines[0].ex[0]).not.toHaveProperty('min')
     file.routines[0].ex[0].kcal = 1e6
     expect(parsePlan(file, 'kg').routines[0].ex[0].kcal).toBe(KCAL_MAX)
-    delete file.routines[0].ex[0].kcal
-    expect(parsePlan(file, 'kg').routines[0].ex[0]).not.toHaveProperty('kcal')
+  })
+
+  it('is in the finish summary, and compares by its count', () => {
+    const w = { entries: [{ id: ROWER, target: { sets: 1, kcal: 50 }, sets: [{ kcal: 55, done: true }] }] }
+    expect(finishCardio(w)[0].sets).toEqual([{ kcal: 55, done: true }])
+    const up = setTrend({ kcal: 55, speed: 10 }, { kcal: 50, speed: 10 }, { mode: 'cardio' })
+    expect(up).toMatchObject({ dir: 1, by: 'kcal' })
+    expect(trendLabel(up)).toBe('More calories than last time')
+    expect(setTrend({ kcal: 50, speed: 11 }, { kcal: 50, speed: 10 }, { mode: 'cardio' })).toMatchObject({ dir: 1, by: 'speed' })
   })
 })
 
 describe('a workout\'s calories', () => {
   const w = { id: 'w', d: '2026-10-01', start: 0, end: 30 * 60000, name: 'Cardio', vol: 0, entries: [
     { id: '0025', target: { mode: 'reps' }, sets: [{ w: 60, r: 5, done: true }] },
-    { id: ROWER, target: { mode: 'cardio' }, sets: [
-      { min: 2, speed: 2, kcal: 20, done: true, phase: 'warmup' },
-      { min: 5, speed: 2, kcal: 55, done: true },
-      { min: 5, speed: 2, kcal: 50, done: false },
+    { id: ROWER, target: { mode: 'cardio', kcal: 50 }, sets: [
+      { kcal: 20, speed: 8, done: true, phase: 'warmup' },
+      { kcal: 55, speed: 10, done: true },
+      { kcal: 50, speed: 10, done: false },
     ] },
-    { id: TREADMILL, target: { mode: 'cardio' }, sets: [{ min: 20, speed: 5, kcal: 140, done: true }, { min: 10, speed: 5, done: true }] },
+    { id: TREADMILL, target: { mode: 'cardio' }, sets: [{ min: 20, speed: 5, done: true }] },
   ] }
 
-  it('adds up the done sets that counted any, warm-ups included', () => {
-    expect(workoutKcal(w)).toBe(215)
+  it('adds up the done calorie intervals, warm-ups included', () => {
+    expect(workoutKcal(w)).toBe(75)
     expect(workoutKcal({ entries: [{ id: '0025', sets: [{ w: 60, r: 5, done: true }] }] })).toBe(0)
     expect(workoutKcal(null)).toBe(0)
   })
 
   it('is in the workout copied as text', () => {
-    expect(workoutText(w, { unit: 'kg', nameOf: () => 'rower' })).toContain('5 min @ 2 km/h · 55 kcal')
+    expect(workoutText(w, { unit: 'kg', nameOf: () => 'rower' })).toContain('55 kcal @ 10 km/h')
   })
 
-  it('round-trips through the CSV export and import', () => {
-    const S = { unit: 'kg', customEx: [], workouts: [w] }
-    const rows = workoutRows(S)
+  it('round-trips through the CSV export and import as calorie sets', () => {
+    const rows = workoutRows({ unit: 'kg', customEx: [], workouts: [w] })
     const col = name => WORKOUT_COLUMNS.indexOf(name)
-    expect(col('calories')).toBeGreaterThan(-1)
     for (const r of rows) expect(r).toHaveLength(WORKOUT_COLUMNS.length)
-    const kcals = rows.map(r => r[col('calories')])
-    expect(kcals).toEqual(['', '20', '55', '140', ''])
+    expect(rows.map(r => r[col('calories')])).toEqual(['', '20', '55', ''])
+    // A calorie set has no time.
+    expect(rows[2][col('seconds')]).toBe('')
     const csv = [WORKOUT_COLUMNS, ...rows].map(r => r.map(v => String(v ?? '')).join(',')).join('\n')
     const back = parseWorkoutCSV(csv, { unit: 'kg' }).workouts[0]
     const rower = back.entries.find(e => e.id === ROWER)
     expect(rower.sets.map(s => s.kcal)).toEqual([20, 55])
-    expect(back.entries.find(e => e.id === TREADMILL).sets[1]).not.toHaveProperty('kcal')
+    expect(rower.sets.every(isKcalSet)).toBe(true)
+    expect(back.entries.find(e => e.id === TREADMILL).sets[0]).toMatchObject({ min: 20 })
   })
 
-  it('reads a Calories column from another app onto cardio sets only', () => {
+  it('reads a Calories column from another app as a calorie set when there is no time', () => {
     const head = 'Date,Workout Name,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,Calories'
-    const csv = [head, '2026-01-22 10:00:00,Mixed,Rowing,1,0,0,1,600,98', '2026-01-22 10:00:00,Mixed,Bench Press (Barbell),1,60,5,0,0,30'].join('\n')
-    const ws = parseWorkoutCSV(csv, { unit: 'kg' }).workouts
-    const sets = ws.flatMap(x => x.entries.flatMap(e => e.sets))
-    expect(sets.find(s => s.min > 0)).toMatchObject({ kcal: 98 })
+    const csv = [head,
+      '2026-01-22 10:00:00,Mixed,Rowing,1,0,0,0,0,98',
+      '2026-01-22 10:00:00,Mixed,Rowing,2,0,0,1,600,90',
+      '2026-01-22 10:00:00,Mixed,Bench Press (Barbell),1,60,5,0,0,30'].join('\n')
+    const sets = parseWorkoutCSV(csv, { unit: 'kg' }).workouts.flatMap(x => x.entries.flatMap(e => e.sets))
+    expect(sets.find(s => s.kcal)).toMatchObject({ kcal: 98 })
+    expect(sets.find(s => s.kcal)).not.toHaveProperty('min')
+    // A timed row is timed: one measure, never both.
+    expect(sets.find(s => s.min > 0)).not.toHaveProperty('kcal')
     expect(sets.find(s => s.r > 0)).not.toHaveProperty('kcal')
   })
 })

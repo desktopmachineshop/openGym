@@ -31,7 +31,7 @@ import {
 import { isWarmupRow, completedVolumeOf, syncSideAggregate } from './workout-model.js'
 import { HEVY_TITLE_MAP } from './hevy-id-map.js'
 import { clampIncline, inclineFrom } from './incline.js'
-import { clampKcal, kcalFrom } from './calories.js'
+import { clampKcal } from './calories.js'
 
 /* ----------------------------------------------------------------- CSV ---- */
 
@@ -103,7 +103,7 @@ const COLUMNS = [
   ['distanceUnit', ['distance unit']],
   // gravl writes a treadmill's grade per set; "Incline (%)" normalises to the same name.
   ['incline', ['incline', 'incline percent']],
-  // Ours writes the machine's calorie count per cardio set; so do a few others, as kcal or calories.
+  // Ours writes a calorie interval's count (lib/calories.js); so do a few others, as kcal or calories.
   ['kcal', ['calories', 'kcal', 'calories kcal', 'active calories', 'energy kcal']],
   ['seconds', ['seconds', 'duration seconds', 'set duration sec', 'duration s']],
   ['time', ['time', 'duration']],
@@ -713,7 +713,9 @@ export function parseWorkoutRows(rows, map, source, { unit = 'kg', customEx = []
       : map.distanceM !== undefined && cell(r, 'distanceM')
         ? toKm(cell(r, 'distanceM'), 'm')
         : toKm(cell(r, 'distance'), cell(r, 'distanceUnit'))
-    if (!w && !reps && !mins && !km) { skipped++; continue }
+    // A calorie interval (lib/calories.js) is a cardio row with a count and no time.
+    const kcal = clampKcal(num(cell(r, 'kcal')))
+    if (!w && !reps && !mins && !km && !kcal) { skipped++; continue }
     // Nobody lifts a negative weight or 2 t, nor does 1,000 reps in a set; a cell like that is
     // broken, and kept it would show as an infinite PR or a NaN chart. Skip the row, say so.
     const maxW = rowUnit === 'lb' || (!rowUnit && unit === 'lb') ? MAX_KG / LB_TO_KG : MAX_KG
@@ -751,7 +753,7 @@ export function parseWorkoutRows(rows, map, source, { unit = 'kg', customEx = []
       if (!c) {
         c = {
           id: fileId || importId('im', source + '|' + name.toLowerCase()), n: own ? name : name.toLowerCase(), custom: true, eq: 'custom', tg: '', desc: '',
-          bp: CATEGORY_BP[cell(r, 'category').toLowerCase()] || (km ? 'cardio' : null)
+          bp: CATEGORY_BP[cell(r, 'category').toLowerCase()] || (km || (kcal && !w && !reps) ? 'cardio' : null)
             // Seconds with nothing else is a hold when the name says what it is (a plank is
             // core work); a name that says nothing keeps being read as cardio, as before.
             || (mins && !reps ? (secs > 0 ? bpFromName(name.toLowerCase()) : null) || 'cardio' : null)
@@ -774,13 +776,13 @@ export function parseWorkoutRows(rows, map, source, { unit = 'kg', customEx = []
     const ownCardio = own && cell(r, 'distanceKm') !== ''
     // Liftosaur's set timer is the set's own time too (lib/import-apps.js).
     const timed = own ? secs > 0 && !reps && !ownCardio : secs > 0 && !km && !reps && !exCardio && (source === 'Strong' || source === 'Liftosaur' || !!nameBp)
-    const isCardio = own ? ownCardio && !timed : !timed && (km > 0 || mins > 0) && !reps
+    const isCardio = own ? ownCardio && !timed : !timed && (km > 0 || mins > 0 || (kcal && !w)) && !reps
     // `u` carries the row's own unit into the conversion pass below and is dropped there —
     // it never reaches the stored set.
     const set = timed
       ? { sec: Math.round(secs), w, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
       : isCardio
-        ? { min: mins || 0, speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), ...kcalFrom({ kcal: clampKcal(num(cell(r, 'kcal'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
+        ? { ...(kcal && !mins ? { kcal } : { min: mins || 0 }), speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
         : { w, r: reps || 0, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
     // A "failure" set type (Hevy's CSV writes one) is the app's set taken to failure; not on
     // cardio, which has no effort to read it as.

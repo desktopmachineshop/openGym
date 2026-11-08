@@ -2202,6 +2202,8 @@ export default {
   '{0}% incline': '{0}% ঢাল',
   '{0} kcal': '{0} কিলোক্যালরি',
   'kcal': 'kcal',
+  'More calories than last time': 'গতবারের চেয়ে বেশি ক্যালোরি',
+  'Fewer calories than last time': 'গতবারের চেয়ে কম ক্যালোরি',
   // --- workout detail: Garmin .fit export ---
   'Export as .fit file': '.fit ফাইল হিসেবে এক্সপোর্ট করুন',
   'Could not create the file': 'ফাইলটি তৈরি করা যায়নি',

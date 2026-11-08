@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
-// Calories per cardio set (lib/calories.js): a column on the cardio rows when the plan counts
-// them or a row already has, typed rather than stepped when it is the fourth column, and stored
-// on the set.
+// A cardio interval measured in calories (lib/calories.js): its first column is Calories in
+// place of Duration, never both, and the count is stored on the set with no minutes.
 import React, { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter } from 'react-router-dom'
@@ -22,7 +21,7 @@ function mount(id, sets, target = {}, more = {}) {
   const S = JSON.parse(JSON.stringify(DEF))
   S.active = {
     id: 'kcal-test', d: '2026-10-09', start: Date.now(), routineId: null, name: 'Cardio', bw: null, cur: 0, ...more,
-    entries: [{ id, target: { sets: 1, min: 20, speed: 5, ...target }, sets }],
+    entries: [{ id, target: { sets: 1, speed: 5, ...target }, sets }],
   }
   useStore.setState({ S, user: null })
   container = document.createElement('div')
@@ -38,7 +37,7 @@ function unmount() {
 afterEach(() => { if (root) unmount() })
 
 const cells = () => container.querySelector('.setrow').querySelectorAll('.stp')
-const kcalCell = () => container.querySelector('.setrow .stp.kc')
+const firstCell = () => container.querySelector('.setrow .stp.w')
 const stored = () => useStore.getState().S.active.entries[0].sets[0]
 const heads = () => [...container.querySelectorAll('.sethead span')].map(s => s.textContent).filter(Boolean)
 function type(input, value) {
@@ -48,55 +47,43 @@ function type(input, value) {
   })
 }
 
-describe('the calories column', () => {
-  it('is not there until the plan counts calories', () => {
-    mount(BIKE, [{ min: 20, speed: 25, done: false }])
+describe('a calorie interval in the workout', () => {
+  it('a timed one has Duration and no Calories', () => {
+    mount(BIKE, [{ min: 20, speed: 25, done: false }], { min: 20 })
+    expect(heads()).toEqual(['Duration (min)', 'Speed (km/h)'])
+  })
+
+  it('a calorie one has Calories where Duration was, stepped, stored on the set', () => {
+    mount(BIKE, [{ kcal: 50, speed: 25, done: false }], { kcal: 50 })
     expect(cells()).toHaveLength(2)
-    expect(kcalCell()).toBe(null)
-  })
-
-  it('is the third column on a bike that counts them, stepped, and stores on the set', () => {
-    mount(BIKE, [{ min: 20, speed: 25, done: false }], { kcal: 150 })
-    expect(cells()).toHaveLength(3)
-    expect(heads()).toEqual(['Duration (min)', 'Speed (km/h)', 'Calories'])
-    expect(kcalCell().querySelector('input').value).toBe('')
-    act(() => kcalCell().querySelector('button[aria-label="Increase"]').click())
-    expect(stored().kcal).toBe(5)
-    type(kcalCell().querySelector('input'), '187')
+    expect(heads()).toEqual(['Calories', 'Speed (km/h)'])
+    expect(firstCell().querySelector('input').value).toBe('50')
+    act(() => firstCell().querySelector('button[aria-label="Increase"]').click())
+    expect(stored()).toEqual({ kcal: 55, speed: 25, done: false })
+    type(firstCell().querySelector('input'), '187')
     expect(stored().kcal).toBe(187)
-    // Cleared, the key goes: an uncounted set again.
-    type(kcalCell().querySelector('input'), '')
-    expect('kcal' in stored()).toBe(false)
+    expect('min' in stored()).toBe(false)
   })
 
-  it('shows on any exercise whose rows already carry a count', () => {
-    mount(BIKE, [{ min: 20, speed: 25, kcal: 140, done: true }])
-    expect(kcalCell().querySelector('input').value).toBe('140')
+  it('keeps the incline on a treadmill, three columns', () => {
+    mount(TREADMILL, [{ kcal: 100, speed: 5, incline: 4, done: false }], { kcal: 100 })
+    expect(heads()).toEqual(['Calories', 'Speed (km/h)', 'Incline (%)'])
   })
 
-  it('sits after the incline on a treadmill, typed rather than stepped', () => {
-    mount(TREADMILL, [{ min: 20, speed: 5, incline: 4, done: false }], { kcal: 100 })
-    expect(cells()).toHaveLength(4)
-    expect(heads()).toEqual(['Duration (min)', 'Speed (km/h)', 'Incline (%)', 'kcal'])
-    expect(kcalCell().querySelector('button')).toBe(null)
-    type(kcalCell().querySelector('input'), '210')
-    expect(stored()).toMatchObject({ incline: 4, kcal: 210 })
-  })
-
-  it('copies the count onto a set added below', () => {
-    mount(BIKE, [{ min: 20, speed: 25, kcal: 160, done: true }])
+  it('adds a set below with the count and no minutes', () => {
+    mount(BIKE, [{ kcal: 60, speed: 25, done: true }], { kcal: 50 })
     const add = [...container.querySelectorAll('button')].find(b => /Add set/.test(b.textContent))
     act(() => add.click())
-    expect(useStore.getState().S.active.entries[0].sets[1]).toMatchObject({ min: 20, speed: 25, kcal: 160, done: false })
+    expect(useStore.getState().S.active.entries[0].sets[1]).toEqual({ kcal: 60, speed: 25, done: false })
   })
 
-  it('has its own stepper in the focus view', () => {
-    mount(BIKE, [{ min: 20, speed: 25, kcal: 100, done: false }], {}, { workoutView: 'focus' })
-    const inc = container.querySelector('button[aria-label="Increase calories"]')
-    expect(inc).not.toBe(null)
-    act(() => inc.click())
+  it('has Calories in place of Duration in the focus view', () => {
+    mount(BIKE, [{ kcal: 100, speed: 25, done: false }], { kcal: 100 }, { workoutView: 'focus' })
+    expect(container.querySelector('button[aria-label="Increase duration"]')).toBe(null)
+    act(() => container.querySelector('button[aria-label="Increase calories"]').click())
     expect(stored().kcal).toBe(105)
-    mount(BIKE, [{ min: 20, speed: 25, done: false }], {}, { workoutView: 'focus' })
+    mount(BIKE, [{ min: 20, speed: 25, done: false }], { min: 20 }, { workoutView: 'focus' })
     expect(container.querySelector('button[aria-label="Increase calories"]')).toBe(null)
+    expect(container.querySelector('button[aria-label="Increase duration"]')).not.toBe(null)
   })
 })

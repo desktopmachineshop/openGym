@@ -2123,6 +2123,8 @@ export default {
   '{0}% incline': '{0}% de inclinação',
   '{0} kcal': '{0} kcal',
   'kcal': 'kcal',
+  'More calories than last time': 'Mais calorias do que da última vez',
+  'Fewer calories than last time': 'Menos calorias do que da última vez',
   // --- workout detail: Garmin .fit export ---
   'Export as .fit file': 'Exportar como ficheiro .fit',
   'Could not create the file': 'Não foi possível criar o ficheiro',

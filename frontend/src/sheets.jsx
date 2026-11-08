@@ -64,7 +64,7 @@ import { isPyramid, normalizePyramid, normalizePyramidRest, normalizePyramidWeig
 import { MOBILE, shareExport, shareExportBlob } from './lib/mobile.js'
 import { speedUnitOf, toSpeed, fromSpeed } from './lib/speed.js'
 import { clampIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from './lib/incline.js'
-import { clampKcal, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
+import { byKcal, clampKcal, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
 import { buildCompletedWorkout, sessionEnd } from './lib/finish-workout.js'
 import { refillAfter } from './lib/rotation.js'
 import { isWarmupRow, hasCompletedWork } from './lib/workout-model.js'
@@ -1419,7 +1419,7 @@ function ExerciseHistory({ exId }) {
   const canRel = rel.length >= 2
   const onRel = curve === 'bodyweight' && canRel
   const onE1 = !onRel && curve === 'e1rm' && h.e1rmPoints.length > 0
-  const unit = h.metric === 'weight' ? st.unit : h.metric === 'reps' ? t('reps') : h.metric === 'sec' ? 's' : t('min')
+  const unit = h.metric === 'weight' ? st.unit : h.metric === 'reps' ? t('reps') : h.metric === 'sec' ? 's' : h.metric === 'kcal' ? t('kcal') : t('min')
   const e1Best = useMemo(() => Math.max(0, ...h.e1rmPoints.map(p => p.y)), [h])
   const relBest = useMemo(() => Math.max(0, ...rel.map(p => p.y)), [rel])
   const curveOpts = []
@@ -2212,6 +2212,9 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
   // in its `mode` (modeOf reads it before the body part).
   const mode = modeOf({ ...c, id: ex.id })
   const cardio = cardioEx && mode === 'cardio'
+  // How long a cardio interval is: a time or a calorie count, one or the other (lib/calories.js).
+  // `len` lives only in the sheet; the slot says it by carrying `min` or `kcal`.
+  const cardioLen = c.len || (byKcal(c) ? 'kcal' : 'min')
   // Both default from the dataset and are then whatever the config says — see isBw.
   const bw = !cardio && isBw({ ...c, id: ex.id })
   const perSide = isPerSide(c)
@@ -2306,10 +2309,9 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
     }
     // The treadmill's grade, only when it has one, so a flat slot keeps the shape it had.
     const incline = clampIncline(c.incline)
-    // The calories each interval counts (lib/calories.js), only when set: it is what turns the
-    // Calories column on in the workout, and a slot without it keeps the shape it had.
-    const kcal = clampKcal(c.kcal)
-    if (cardio) saveAs({ sets, min: Math.max(1, Math.round(c.min) || 20), speed: Math.max(0, c.speed || 8), ...(incline > 0 ? { incline } : {}), ...(kcal ? { kcal } : {}), ...withNote, ...withRest, ...withSubs })
+    // Minutes or calories, never both: a calorie slot has no minutes (lib/calories.js).
+    const length = cardioLen === 'kcal' ? { kcal: clampKcal(c.kcal) || 50 } : { min: Math.max(1, Math.round(c.min) || 20) }
+    if (cardio) saveAs({ sets, ...length, speed: Math.max(0, c.speed || 8), ...(incline > 0 ? { incline } : {}), ...withNote, ...withRest, ...withSubs })
     else if (mode === 'time') saveAs({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...flags, ...(perSide ? { side: true } : {}), ...prog, ...withNote, ...withWarmups, ...withRest, ...withSetRests, ...withMeant, ...withFailure, ...withSubs })
     else {
       // A unilateral target is stored even: the split has to divide, and a typed 15 would
@@ -2366,12 +2368,17 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
       <Segmented className="seg-range" value={mode} onChange={setMode}
         options={[...(cardioEx ? [{ value: 'cardio', label: t('Cardio') }] : []), { value: 'reps', label: t('Reps') }, { value: 'time', label: t('Time') }]} />
     </div>
-    {/* Cardio holds four or five steppers (Calories joined the incline), so it wraps in pairs
-        on a phone like the double-progression row below. */}
-    <div className={'row cfgrow' + (cardio ? ' cfgrow-4' : '')} style={{ marginBottom: mode === 'time' ? 8 : 18 }}>
+    {/* A cardio interval's length: a time or a calorie count, chosen here, one or the other. */}
+    {cardio && <div style={{ marginBottom: 14 }}>
+      <Segmented className="seg-len" value={cardioLen} onChange={v => setC(x => ({ ...x, len: v }))}
+        options={[{ value: 'min', label: t('Time') }, { value: 'kcal', label: t('Calories') }]} />
+    </div>}
+    <div className="row cfgrow" style={{ marginBottom: mode === 'time' ? 8 : 18 }}>
       {cardio ? <>
         <Stepper label={t('Intervals')} value={c.sets} step={1} decimal={false} onChange={v => setC(x => ({ ...x, sets: v }))} />
-        <Stepper label={t('Minutes')} value={c.min} step={1} decimal={false} onChange={v => setC(x => ({ ...x, min: v }))} />
+        {cardioLen === 'kcal'
+          ? <Stepper label={t('Calories')} value={c.kcal || 50} step={KCAL_STEP} min={1} max={KCAL_MAX} decimal={false} onChange={v => setC(x => ({ ...x, kcal: clampKcal(v) }))} />
+          : <Stepper label={t('Minutes')} value={c.min} step={1} decimal={false} onChange={v => setC(x => ({ ...x, min: v }))} />}
         {/* Typed and stepped in the profile's unit, kept in km/h (lib/speed.js). */}
         <Stepper label={speedUnit === 'mph' ? t('Speed (mph)') : t('Speed (km/h)')} value={toSpeed(c.speed, speedUnit)} step={0.5}
           onChange={v => setC(x => ({ ...x, speed: fromSpeed(v, speedUnit) }))} />
@@ -2379,10 +2386,6 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
             take it from here when last time had none. */}
         {(inclineFits(ex) || c.incline > 0) && <Stepper label={t('Incline (%)')} value={c.incline || 0} step={INCLINE_STEP} max={INCLINE_MAX}
           onChange={v => setC(x => ({ ...x, incline: clampIncline(v) }))} />}
-        {/* Calories per interval, read off the machine; 0 leaves them uncounted. On, the workout
-            gets a Calories column for what each interval actually burned. */}
-        <Stepper label={t('Calories')} value={c.kcal || 0} step={KCAL_STEP} max={KCAL_MAX} decimal={false}
-          onChange={v => setC(x => ({ ...x, kcal: clampKcal(v) }))} />
       </> : mode === 'time' ? <>
         <Stepper label={t('Sets')} value={c.sets} step={1} decimal={false} onChange={v => setC(x => ({ ...x, sets: v }))} />
         <Stepper label={t('Seconds')} value={c.sec} step={5} decimal={false} onChange={v => setC(x => ({ ...x, sec: v }))} />

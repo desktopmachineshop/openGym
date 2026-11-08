@@ -12,7 +12,7 @@ import { warmupModeOf, ownRowsOf } from './warmup-ramp.js'
 import { EXIDX, canonicalExId, isBodyweightEq, isCustomEx } from './exercises.js'
 import { cleanBackups } from './routine-backups.js'
 import { cleanUrl } from './media-refs.js'
-import { modeOf, exLine, MAX_PLANNED_WARMUPS } from './history.js'
+import { modeOf, exLine, cardioLengthText, MAX_PLANNED_WARMUPS } from './history.js'
 import { deriveSessionName } from './session-merge.js'
 import { isPyramid, normalizePyramid, normalizePyramidRest, normalizePyramidWeight } from './pyramid.js'
 import { isBackoff } from './backoff.js'
@@ -87,7 +87,8 @@ function cleanEx(e) {
     // Written out for the same reason as 'time' below: swings set to cardio would otherwise
     // arrive as reps with no target (#640).
     o.mode = 'cardio'
-    if (e.min != null) o.min = e.min
+    // Minutes or calories, whichever the interval is measured in (lib/calories.js).
+    if (e.min != null && !hasKcal(e)) o.min = e.min
     if (e.speed != null) o.speed = e.speed
     if (hasIncline(e)) o.incline = clampIncline(e.incline)
     if (hasKcal(e)) o.kcal = clampKcal(e.kcal)
@@ -439,7 +440,7 @@ function schemeParts(e, unit, speedUnit) {
   const sets = e.sets || 1
   const mode = modeOf(e)
   if (mode === 'cardio') {
-    const body = `${e.min || 20} min @ ${fmtSpeed(e.speed || 8, speedUnit)}`
+    const body = `${cardioLengthText(e)} @ ${fmtSpeed(e.speed || 8, speedUnit)}`
     return [sets > 1 ? `${sets} × ${body}` : body]
   }
   const line = exLine({ ...e, reps: e.reps ?? 10 }, unit, speedUnit)
