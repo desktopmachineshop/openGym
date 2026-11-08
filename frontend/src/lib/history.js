@@ -4,6 +4,7 @@ import { isOn } from './modules.js'
 import { todayISO, isoOf, weekKey, weekStartOf, fmtNum } from './format.js'
 import { fmtSpeed } from './speed.js'
 import { hasIncline, inclineFrom } from './incline.js'
+import { clampKcal, hasKcal, kcalFrom } from './calories.js'
 import { isCardio, isHold, isOneLimb, isBodyweightEq, isAssisted, betterWeight } from './exercises.js'
 import { barWeightFor } from './bar.js'
 import { phaseForSet, modeForSet, modeForEntry, isWarmupRow, isFailureSet, isDropSet, isRestPauseSet, normalizeMode, completedVolumeOf, hasCompletedWork, nextDropWeight, splitBurstReps, makeSideSet, isSideSet, syncSideAggregate, WEIGHT_ORIGIN_MANUAL, dropsOf, clustersOf } from './workout-model.js'
@@ -157,7 +158,9 @@ export function setLabel(id, s, cfg, speedUnit) {
   // to the volume those same sets still count. A set with reps and nothing cardio was a rep set.
   if (!EXPLICIT_MODES.has(cfg?.mode) && mode !== 'reps' && s.r > 0 && !(s.min > 0 || s.speed > 0 || s.sec > 0)) mode = 'reps'
   // A treadmill grade rides along when the set has one (lib/incline.js); a flat set reads as it did.
+  // So does the machine's calorie count (lib/calories.js).
   if (mode === 'cardio') return `${s.min || 0} min @ ${fmtSpeed(s.speed || 0, speedUnit)}` + (hasIncline(s) ? ' · ' + t('{0}% incline', fmtNum(Number(s.incline))) : '')
+    + (hasKcal(s) ? ' · ' + t('{0} kcal', fmtNum(clampKcal(s.kcal))) : '')
   // A set taken to failure carries its "F" behind the numbers, the mark lifting logs use for it;
   // the history, the text export and the set menu all read it from here.
   const fail = isFailureSet(s) ? ' ' + t('F') : ''
@@ -260,6 +263,7 @@ export function exLine(cfg, unit, speedUnit) {
     : backoff ? ' · ' + (isBw(cfg) ? '+' : '') + backoffWeights(cfg.weight, n, backoff).map(fmtNum).join(' → ') + ' ' + unit
       : ' · ' + (isBw(cfg) ? '+' : '') + fmtNum(cfg.weight) + ' ' + unit
   if (mode === 'cardio') return `${n} × ${cfg.min || 20} min @ ${fmtSpeed(cfg.speed || 8, speedUnit)}` + (hasIncline(cfg) ? ' · ' + t('{0}% incline', fmtNum(Number(cfg.incline))) : '')
+    + (hasKcal(cfg) ? ' · ' + t('{0} kcal', fmtNum(clampKcal(cfg.kcal))) : '')
   // A timed hold has no rep count to spell a split out of ("8/side" below) — "per side" says it
   // happens twice, once each side (buildWorkSets), rather than trying to divide a duration.
   if (mode === 'time') return `${setsRepsOf(cfg)}${load}${isPerSide(cfg) ? ' · ' + t('per side') : ''}`
@@ -605,8 +609,9 @@ function buildWorkSets(S, cfg, options = {}) {
     for (let i = 0; i < n; i++) {
       const prev = prevAt(i)
       // The grade is last time's when it had one, else the routine's own (set in the exercise's
-      // settings, Discord "can not set incline"): a flat walk last time never hides it.
-      sets.push({ min: prev ? prev.min : (cfg.min || 20), speed: prev ? prev.speed : (cfg.speed || 8), ...inclineFrom(hasIncline(prev) ? prev : cfg), done: false })
+      // settings, Discord "can not set incline"): a flat walk last time never hides it. The
+      // calorie count the same way (lib/calories.js).
+      sets.push({ min: prev ? prev.min : (cfg.min || 20), speed: prev ? prev.speed : (cfg.speed || 8), ...inclineFrom(hasIncline(prev) ? prev : cfg), ...kcalFrom(hasKcal(prev) ? prev : cfg), done: false })
     }
     return sets
   }

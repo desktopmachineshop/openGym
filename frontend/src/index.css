@@ -1495,6 +1495,14 @@ button.whdr-gym{color:var(--acc-ink);cursor:pointer}
 .setrow.eff3 .effcell-stp>button[aria-label="Decrease"],
 .setrow.eff3 .effcell-stp>button[aria-label="Increase"]{width:22px}
 .setrow.eff3 .effcell-stp .val{font-size:14px}
+/* A treadmill counting calories has four columns: duration, speed and incline as steppers, then
+   the calories typed in (lib/calories.js). Three steppers at the effort row's sizes left the row
+   34 px too wide at 360 and 7 px at 390, so here the buttons give up more (a 12 px floor), the
+   gaps shrink, and the calories cell reserves "1250" and nothing else. */
+.setrow.c4,.sethead.c4{gap:4px}
+.setrow.c4 .stp.w,.setrow.c4 .stp.r,.sethead.c4 .w-sp,.sethead.c4 .r-sp{--btn-floor:12px}
+.setrow.c4 .stp.w button,.setrow.c4 .stp.r button{width:22px}
+.setrow.c4 .stp.kc,.sethead.c4 .kc-sp{flex:.75 1 0;--num:36px;--btn-floor:0px}
 /* effort quick picker sheet: colour-coded preset buttons, hardest (purple) first */
 /* effort picker: the ⋯-menu list with the value in the icon square, tinted per band; the
    exact-value row carries the same stepper as the logged cell in the set row. */

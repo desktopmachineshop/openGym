@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
 import { clampIncline, hasIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from '../lib/incline.js'
+import { clampKcal, kcalShown, KCAL_MAX, KCAL_STEP } from '../lib/calories.js'
 import { exerciseNameClass, exerciseNameFor, t } from '../lib/i18n.js'
 import { fmtDate, fmtNum, fmtPlate } from '../lib/format.js'
 import { EFFORT, effortOf, modeOf } from '../lib/history.js'
@@ -347,6 +348,9 @@ export default function FocusView({
             {/* The treadmill's grade, where the exercise has one (lib/incline.js). */}
             {(inclineFits(ex) || entry.sets.some(hasIncline)) && <Stepper label={t('Incline (%)')} ariaLabel="incline" value={set.incline || 0} step={INCLINE_STEP} max={INCLINE_MAX} disabled={readOnly}
               onChange={value => onField(setIdx, 'incline', clampIncline(value))} />}
+            {/* The machine's calorie count, when the plan counts them or a row has one (lib/calories.js). */}
+            {kcalShown(entry.target, entry.sets) && <Stepper label={t('Calories')} ariaLabel="calories" value={set.kcal || 0} step={KCAL_STEP} max={KCAL_MAX} decimal={false} disabled={readOnly}
+              onChange={value => onField(setIdx, 'kcal', clampKcal(value))} />}
           </> : <>
             <Stepper label={t('Load ({0})', S.unit)} ariaLabel="load" value={set.w || 0} step={loadStep} onStep={stepLoad} disabled={readOnly}
               onChange={value => onField(setIdx, 'w', value)} />

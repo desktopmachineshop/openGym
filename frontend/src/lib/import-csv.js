@@ -31,6 +31,7 @@ import {
 import { isWarmupRow, completedVolumeOf, syncSideAggregate } from './workout-model.js'
 import { HEVY_TITLE_MAP } from './hevy-id-map.js'
 import { clampIncline, inclineFrom } from './incline.js'
+import { clampKcal, kcalFrom } from './calories.js'
 
 /* ----------------------------------------------------------------- CSV ---- */
 
@@ -102,6 +103,8 @@ const COLUMNS = [
   ['distanceUnit', ['distance unit']],
   // gravl writes a treadmill's grade per set; "Incline (%)" normalises to the same name.
   ['incline', ['incline', 'incline percent']],
+  // Ours writes the machine's calorie count per cardio set; so do a few others, as kcal or calories.
+  ['kcal', ['calories', 'kcal', 'calories kcal', 'active calories', 'energy kcal']],
   ['seconds', ['seconds', 'duration seconds', 'set duration sec', 'duration s']],
   ['time', ['time', 'duration']],
   // Strong's current export: the whole workout's length, in seconds, on every row.
@@ -777,7 +780,7 @@ export function parseWorkoutRows(rows, map, source, { unit = 'kg', customEx = []
     const set = timed
       ? { sec: Math.round(secs), w, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
       : isCardio
-        ? { min: mins || 0, speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
+        ? { min: mins || 0, speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), ...kcalFrom({ kcal: clampKcal(num(cell(r, 'kcal'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
         : { w, r: reps || 0, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
     // A "failure" set type (Hevy's CSV writes one) is the app's set taken to failure; not on
     // cardio, which has no effort to read it as.

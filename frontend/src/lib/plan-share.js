@@ -24,6 +24,7 @@ import { convertWeight } from './units.js'
 import { exUnitPin, withExUnit, viewTarget, exUnitOf } from './ex-unit.js'
 import { fmtSpeed, speedUnitOf } from './speed.js'
 import { clampIncline, hasIncline } from './incline.js'
+import { clampKcal, hasKcal } from './calories.js'
 import { MUSCLES, inMuscleOrder } from './muscles.js'
 import { SG_NAME_MAX } from './superset-meta.js'
 import { esc, printShell, printDocument, probeMarks } from './print-doc.js'
@@ -89,6 +90,7 @@ function cleanEx(e) {
     if (e.min != null) o.min = e.min
     if (e.speed != null) o.speed = e.speed
     if (hasIncline(e)) o.incline = clampIncline(e.incline)
+    if (hasKcal(e)) o.kcal = clampKcal(e.kcal)
   } else if (mode === 'time') {
     // Written out even though 'reps' is the fallback for a non-cardio id: a plan file that
     // dropped the mode would turn a 45-second plank into a 45-rep one at the other end.
@@ -319,6 +321,7 @@ export function parsePlan(raw, destinationUnit = 'kg') {
       const sideRest = cleanRestSec(e.sideRestSec)
       const sideOff = !!e.side && e.sideRestOff === true
       const incline = clampIncline(e.incline)
+      const kcal = clampKcal(e.kcal)
       // Planned substitutes: the catalogue's only, as they are exported.
       const subs = cleanBackups(Array.isArray(e.subs) ? e.subs.map(x => (typeof x === 'string' ? canonicalExId(x) : x)) : [], known.has(e.id) ? e.id : canonicalExId(e.id), x => !known.has(x) && !!EXIDX[x] && !isCustomEx(EXIDX[x]))
       // Superset meta only means something on a member of a superset; on a lone exercise it is dropped.
@@ -328,9 +331,9 @@ export function parsePlan(raw, destinationUnit = 'kg') {
       const pyramidRest = pyramid.length ? normalizePyramidRest(e.pyramidRest, pyramid.length) : []
       const pyramidWeight = pyramid.length ? normalizePyramidWeight(e.pyramidWeight, pyramid.length) : []
       const warmChoice = cleanWarmupChoice(e)
-      const { warmupSets, warmup: _warmup, warmupRows: _warmupRows, intensifier, restSec, restOff: _restOff, warmupRestSec, warmupRestOff: _warmOff, sideRestSec: _sideRest, sideRestOff: _sideOff, subs: _subs, pyramid: _pyramid, pyramidRest: _pyramidRest, pyramidWeight: _pyramidWeight, sgName: _sgName, sgRest: _sgRest, incline: _incline, ...passthrough } = e
+      const { warmupSets, warmup: _warmup, warmupRows: _warmupRows, intensifier, restSec, restOff: _restOff, warmupRestSec, warmupRestOff: _warmOff, sideRestSec: _sideRest, sideRestOff: _sideOff, subs: _subs, pyramid: _pyramid, pyramidRest: _pyramidRest, pyramidWeight: _pyramidWeight, sgName: _sgName, sgRest: _sgRest, incline: _incline, kcal: _kcal, ...passthrough } = e
       if (!known.has(passthrough.id)) passthrough.id = canonicalExId(passthrough.id)
-      return convertedExercise({ ...passthrough, ...(pyramid.length ? { pyramid } : {}), ...(pyramidRest.length ? { pyramidRest } : {}), ...(pyramidWeight.length ? { pyramidWeight } : {}), ...(warm ? { warmupSets: warm } : {}), ...warmChoice, ...(intens ? { intensifier: intens } : {}), ...(rest ? { restSec: rest } : restOff ? { restOff: true } : {}), ...(warmOff ? { warmupRestOff: true } : warmRest ? { warmupRestSec: warmRest } : {}), ...(sideOff ? { sideRestOff: true } : sideRest ? { sideRestSec: sideRest } : {}), ...(subs.length ? { subs } : {}), ...(sgName ? { sgName } : {}), ...(sgRest ? { sgRest } : {}), ...(incline > 0 ? { incline } : {}) }, sourceUnit || destination, destination)
+      return convertedExercise({ ...passthrough, ...(pyramid.length ? { pyramid } : {}), ...(pyramidRest.length ? { pyramidRest } : {}), ...(pyramidWeight.length ? { pyramidWeight } : {}), ...(warm ? { warmupSets: warm } : {}), ...warmChoice, ...(intens ? { intensifier: intens } : {}), ...(rest ? { restSec: rest } : restOff ? { restOff: true } : {}), ...(warmOff ? { warmupRestOff: true } : warmRest ? { warmupRestSec: warmRest } : {}), ...(sideOff ? { sideRestOff: true } : sideRest ? { sideRestSec: sideRest } : {}), ...(subs.length ? { subs } : {}), ...(sgName ? { sgName } : {}), ...(sgRest ? { sgRest } : {}), ...(incline > 0 ? { incline } : {}), ...(kcal ? { kcal } : {}) }, sourceUnit || destination, destination)
     })
   }))
   // Exercise units (#657): only kg or lb, and only for exercises the plan still holds.

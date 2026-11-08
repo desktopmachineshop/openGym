@@ -2200,6 +2200,8 @@ export default {
   // --- cardio: treadmill incline ---
   'Incline (%)': 'ঢাল (%)',
   '{0}% incline': '{0}% ঢাল',
+  '{0} kcal': '{0} কিলোক্যালরি',
+  'kcal': 'kcal',
   // --- workout detail: Garmin .fit export ---
   'Export as .fit file': '.fit ফাইল হিসেবে এক্সপোর্ট করুন',
   'Could not create the file': 'ফাইলটি তৈরি করা যায়নি',

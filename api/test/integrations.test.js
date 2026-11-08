@@ -387,3 +387,14 @@ test('deleting a profile takes its connections and its queue with it', () => {
   assert.deepEqual(r.hub.describe('u1').connections, []);
   assert.equal(r.hub._outbox().snapshot().jobs.length, 0);
 });
+
+test('a cardio set keeps its minutes, speed, incline and calories in the payload', async () => {
+  const { workoutPayload } = await import('../integrations/events.js');
+  const w = { id: 'w1', d: '2026-10-01', start: 0, end: 1800000, entries: [
+    { id: '1161', sets: [{ min: 10, speed: 12, kcal: 140, done: true }, { min: 5, speed: 12, done: true }] },
+    { id: '2259', sets: [{ min: 20, speed: 5, incline: 6, done: true }] },
+  ] };
+  const p = workoutPayload(w, { unit: 'kg' });
+  assert.deepEqual(p.exercises[0].sets, [{ minutes: 10, speedKmh: 12, kcal: 140 }, { minutes: 5, speedKmh: 12 }]);
+  assert.deepEqual(p.exercises[1].sets, [{ minutes: 20, speedKmh: 5, incline: 6 }]);
+});

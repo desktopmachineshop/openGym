@@ -2121,6 +2121,8 @@ export default {
   // --- cardio: treadmill incline ---
   'Incline (%)': 'Inclinación (%)',
   '{0}% incline': '{0} % de inclinación',
+  '{0} kcal': '{0} kcal',
+  'kcal': 'kcal',
   // --- workout detail: Garmin .fit export ---
   'Export as .fit file': 'Exportar como archivo .fit',
   'Could not create the file': 'No se pudo crear el archivo',
