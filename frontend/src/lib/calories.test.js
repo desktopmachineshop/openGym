@@ -151,11 +151,11 @@ describe('a workout\'s calories', () => {
 
 describe('which cardio offers Calories', () => {
   it('the machines whose console shows a count', () => {
-    for (const id of ['2259', '3666', '9608', '2138', '3893', '0798', '1161', '2192', '2141', '2140', '2311', '0938', '2331', '4229', '0828'])
+    for (const id of ['2259', '3666', '9608', '2138', '3893', '0798', '1161', '2192', '2141', '2140', '2311', '0938', '2331', '4229', '0828', '0684', '10729'])
       expect(kcalFits(EXIDX[id]), EXIDX[id].n).toBe(true)
   })
-  it('not running in place, a rope, a drill or a pool', () => {
-    for (const id of ['0685', '0684', '3556', '3380', '2258', '5214', '10729', '0630'])
+  it('not a run or walk outdoors, a rope or a drill', () => {
+    for (const id of ['0685', '3556', '3380', '2258', '5214', '0630'])
       expect(kcalFits(EXIDX[id]), EXIDX[id].n).toBe(false)
   })
   it('your own exercise always does', () => {

@@ -56,8 +56,9 @@ export function workoutKcal(w) {
 // English name. Running in place, a jump rope or a bodyweight drill has no readout to copy.
 const READOUT_EQ = new Set(['stationary bike', 'elliptical machine', 'stepmill machine', 'leverage machine', 'skierg machine'])
 const READOUT = /treadmill|rowing machine|\brower|ergometer|\berg\b|elliptical|cross ?trainer|wave machine|stationary bike|exercise bike|air ?bike|assault|spin bike|recumbent|stepmill|stair ?(master|climber|mill)|stepper|ski ?erg/i
-// "walk (equipment)" is a walk on a machine; its name only says equipment.
-const READOUT_IDS = new Set(['0828'])
+// Named without the machine: "walk (equipment)" and "run (equipment)" are on a treadmill, and an
+// aquabike is a pool bike with a console of its own.
+const READOUT_IDS = new Set(['0828', '0684', '10729'])
 
 /**
  * Whether a cardio exercise offers Calories as its length. A catalogue exercise does when its
