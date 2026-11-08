@@ -2123,6 +2123,11 @@ export default {
   '{0}% incline': '{0}% de inclinação',
   '{0} kcal': '{0} kcal',
   'kcal': 'kcal',
+  'Distance': 'Distância',
+  'Distance (km)': 'Distância (km)',
+  'Distance (mi)': 'Distância (mi)',
+  'Further than last time': 'Mais distância do que da última vez',
+  'Less distance than last time': 'Menos distância do que da última vez',
   'More calories than last time': 'Mais calorias do que da última vez',
   'Fewer calories than last time': 'Menos calorias do que da última vez',
   // --- workout detail: Garmin .fit export ---

@@ -2,7 +2,8 @@
 // a calorie slot and its sets carry `kcal` and no minutes, and everything that reads a cardio set
 // back reads it by its count, with the session's total in the summaries.
 import { describe, it, expect } from 'vitest'
-import { KCAL_MAX, byKcal, cardioLength, clampKcal, hasKcal, isKcalSet, workoutKcal } from './calories.js'
+import { KCAL_MAX, byKcal, clampKcal, hasKcal, isKcalSet, workoutKcal } from './calories.js'
+import { cardioLength } from './cardio-length.js'
 import { setLabel, buildSets, copyRowAt, exLine, insertWarmupRow, setsRepsOf } from './history.js'
 import { buildPlanBundle, parsePlan } from './plan-share.js'
 import { workoutText } from './workout-text.js'

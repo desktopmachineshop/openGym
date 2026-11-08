@@ -1,7 +1,7 @@
 // Calories per cardio set: what the rower, bike or treadmill says you burned.
 //
-// A cardio interval is as long as a time or as a calorie count, one or the other, chosen in the
-// exercise's settings. A timed one is minutes at a speed, as every cardio set always was; a calorie
+// A cardio interval is as long as a time, a distance or a calorie count, one of them, chosen in
+// the exercise's settings (lib/cardio-length.js has the choice itself). A timed one is minutes at a speed, as every cardio set always was; a calorie
 // one is the machine's count at a speed, with no minutes: { kcal: 50, speed: 10, done: true }, the
 // slot { sets: 4, kcal: 50, speed: 10 }. A slot with a count is a calorie one (byKcal), whatever
 // default minutes it may still carry. An older app that does not know the key leaves it alone
@@ -32,17 +32,8 @@ export const kcalFrom = s => (hasKcal(s) ? { kcal: clampKcal(s.kcal) } : {})
 /** Whether a cardio slot (or a session's target) measures its intervals in calories, not minutes. */
 export const byKcal = cfg => hasKcal(cfg)
 
-/** Whether a logged cardio set is a calorie one: a count and no minutes. */
+/** Whether a logged cardio set is a calorie one: a count and no minutes (lib/cardio-length.js). */
 export const isKcalSet = s => hasKcal(s) && !(Number(s?.min) > 0)
-
-/**
- * A new cardio row for a slot: its length in the slot's own measure (last time's when last time
- * was measured the same way, else the plan's), and the speed and incline as before.
- */
-export function cardioLength(cfg, prev) {
-  if (byKcal(cfg)) return { kcal: isKcalSet(prev) ? clampKcal(prev.kcal) : clampKcal(cfg.kcal) }
-  return { min: Number(prev?.min) > 0 ? prev.min : (cfg?.min || 20) }
-}
 
 /**
  * The calories a workout's done sets add up to: cardio sets with a count, warm-ups included

@@ -32,6 +32,7 @@ import { isWarmupRow, completedVolumeOf, syncSideAggregate } from './workout-mod
 import { HEVY_TITLE_MAP } from './hevy-id-map.js'
 import { clampIncline, inclineFrom } from './incline.js'
 import { clampKcal } from './calories.js'
+import { clampKm } from './cardio-length.js'
 
 /* ----------------------------------------------------------------- CSV ---- */
 
@@ -782,7 +783,8 @@ export function parseWorkoutRows(rows, map, source, { unit = 'kg', customEx = []
     const set = timed
       ? { sec: Math.round(secs), w, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
       : isCardio
-        ? { ...(kcal && !mins ? { kcal } : { min: mins || 0 }), speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
+        // With no time it is a calorie or distance interval (lib/cardio-length.js), not 0 minutes.
+        ? { ...(!mins && kcal ? { kcal } : !mins && km > 0 ? { km: clampKm(km) } : { min: mins || 0 }), speed: mins > 0 ? Math.round(km / (mins / 60) * (own ? 100 : 10)) / (own ? 100 : 10) : 0, ...inclineFrom({ incline: clampIncline(num(cell(r, 'incline'))) }), done: true, ...(warmup ? { phase: 'warmup' } : {}) }
         : { w, r: reps || 0, done: true, u: rowUnit, ...(warmup ? { phase: 'warmup' } : {}) }
     // A "failure" set type (Hevy's CSV writes one) is the app's set taken to failure; not on
     // cardio, which has no effort to read it as.

@@ -44,7 +44,7 @@ afterEach(() => { act(() => { mounted.splice(0).forEach(root => root.unmount()) 
 describe('time or calories in a cardio exercise\'s settings', () => {
   it('offers Time or Calories, on Time by default, with Minutes and no Calories', () => {
     const v = open(EXIDX[ROWER], { sets: 4, min: 5, speed: 10 })
-    expect(v.lengths()).toEqual(['Time', 'Calories'])
+    expect(v.lengths()).toEqual(['Time', 'Distance', 'Calories'])
     expect(v.picked()).toBe('Time')
     expect(v.labels()).toContain('Minutes')
     expect(v.labels()).not.toContain('Calories')
@@ -77,3 +77,25 @@ describe('time or calories in a cardio exercise\'s settings', () => {
     expect(saved).not.toHaveProperty('kcal')
   })
 })
+
+describe('distance in a cardio exercise\'s settings', () => {
+  it('Distance swaps Minutes for a distance and saves it without minutes', () => {
+    const v = open(EXIDX[ROWER], { sets: 4, min: 5, speed: 10 })
+    v.pick('Distance')
+    expect(v.labels()).toContain('Distance (km)')
+    expect(v.labels()).not.toContain('Minutes')
+    v.type(v.field('Distance (km)'), '0.5')
+    v.save()
+    const saved = v.onSave.mock.calls[0][0]
+    expect(saved).toMatchObject({ sets: 4, km: 0.5, speed: 10 })
+    expect(saved).not.toHaveProperty('min')
+    expect(saved).not.toHaveProperty('kcal')
+  })
+
+  it('reopens on Distance', () => {
+    const v = open(EXIDX[ROWER], { sets: 4, km: 2, speed: 10 })
+    expect(v.picked()).toBe('Distance')
+    expect(v.field('Distance (km)').value).toBe('2')
+  })
+})
+
