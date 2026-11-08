@@ -14,7 +14,7 @@ import { CONTRACT } from './payload.js';
 import { buildPrompt, buildPromptParts } from './prompt.js';
 import { SCHEMAS } from './schemas.js';
 import { extractJSON, contractOK } from './parse.js';
-import { validatePlan, validateReview, validateDebrief, validateAsk, validateAdapt } from './validate.js';
+import { validatePlan, validateReview, validateDebrief, validateAsk, validateAdapt, validateTranscribe } from './validate.js';
 import { isChangeList, changesOntoPlan } from './refine-changes.js';
 
 /**
@@ -23,7 +23,12 @@ import { isChangeList, changesOntoPlan } from './refine-changes.js';
  * @returns {{ ok:true, nochange?:boolean, reading?:string, result?:object }
  *        | { ok:false, errorClass:string, detail?:string, repairable?:boolean, errors?:string[], raw?:string }}
  */
-export async function attemptOnce({ adapter, cfg, kind, payload, model, timeoutMs, invokeOpts = {} }, repair) {
+export async function attemptOnce({ adapter, cfg, kind, payload, model, timeoutMs, images, invokeOpts = {} }, repair) {
+  // A photo (the `transcribe` job) goes only to an adapter that says it takes one. The callers
+  // check before a job is queued; this is the last place it could slip past, so it is checked here
+  // too rather than sent to a provider that would drop it, or worse, bill for reading nothing.
+  const photos = Array.isArray(images) && images.length ? images : null;
+  if (photos && !adapter.images) return { ok: false, errorClass: 'noimages' };
   // HTTP providers get the rules/payload split (prefix caching, schema-constrained decoding);
   // the runtime-backed CLIs still get one flat prompt — they have no message roles to split over.
   const parts = buildPromptParts(kind, payload, repair);
@@ -32,6 +37,7 @@ export async function attemptOnce({ adapter, cfg, kind, payload, model, timeoutM
     cfg,
     prompt: split ? parts.user : parts.system + '\n\n---\n\n' + parts.user,
     ...(split ? { system: parts.system, schema: SCHEMAS[parts.task] || null } : {}),
+    ...(photos ? { images: photos } : {}),
     model: model || null, timeoutMs, ...invokeOpts
   });
 
@@ -81,6 +87,8 @@ export async function attemptOnce({ adapter, cfg, kind, payload, model, timeoutM
       ? validateAsk(parsed.value)
       : kind === 'adapt'
       ? validateAdapt(parsed.value, payload.today, { customIds, equipment, offered, noDumbbells })
+      : kind === 'transcribe'
+      ? validateTranscribe(parsed.value, { customIds })
       : validatePlan(answer, {
       customIds, equipment, offered, noDumbbells,
       workingWeights: payload.history?.workingWeights,
@@ -98,6 +106,8 @@ export async function runPipeline(opts) {
   if (!attempt.ok && attempt.repairable) {
     // One repair round, then done. Two failures is a provider problem, not a prompting
     // problem, and a retry loop against a paid API is a bad way to find out.
+    // The photo goes again with it: the repair is about reading it, and an answer about a
+    // picture it can no longer see would be a guess.
     attempt = await attemptOnce(opts, { previous: attempt.raw, errors: attempt.errors });
   }
   return attempt;

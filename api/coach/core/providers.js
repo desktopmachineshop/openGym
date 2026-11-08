@@ -15,7 +15,11 @@ export const HTTP_PROVIDERS = Object.freeze({
     apiKeyEnv: 'ANTHROPIC_API_KEY', oauthEnv: null,
     defaultBase: 'https://api.anthropic.com',
     defaultModel: 'claude-opus-5',
-    keyPlaceholder: 'sk-ant-…'
+    keyPlaceholder: 'sk-ant-…',
+    // Takes a photo with a job (the `transcribe` job): every Claude model reads images, and the
+    // Messages API carries them as content blocks (adapters/anthropic.js). The other providers
+    // say nothing, which reads as no: the photo action is not offered for them.
+    images: true
   }),
   openai: Object.freeze({
     label: 'OpenAI API', runtime: 'HTTPS', http: true,

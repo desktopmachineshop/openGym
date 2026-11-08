@@ -597,7 +597,10 @@ export function workoutMeta(S, workoutId) {
  * an HMAC on its instance secret (api/coach/handle.js), the phone draws a random one once and
  * keeps it. Either way it is 16 characters and never the uid.
  */
-export const TASKS = ['create', 'review', 'debrief', 'ask', 'adapt'];
+export const TASKS = ['create', 'review', 'debrief', 'ask', 'adapt', 'transcribe'];
+// The most a `transcribe` job reads of pasted text: a long programme copied from a message, not a
+// chat line, so the chat's own limit (maxMessageLen) is not the one that applies.
+export const TRANSCRIBE_TEXT_MAX = MAX_NOTE_CHARS;
 // Why someone asks the Coach about an exercise in the middle of a workout (the `adapt` job).
 export const ADAPT_REASONS = ['pain', 'busy', 'short', 'great', 'tired', 'other'];
 export const ADAPT_RECENT = 3;
@@ -608,6 +611,7 @@ export function build(S, opts = {}) {
   const profile = opts.intake || coach.profile || null;
   // The one clock the payload reads, so a test can pin it.
   const now = Number.isFinite(opts.now) ? opts.now : Date.now();
+  if (opts.kind === 'transcribe') return transcribePayload(S, opts, now);
   const p = {
     coach_contract: CONTRACT,
     task: TASKS.includes(opts.kind) ? opts.kind : 'create',
@@ -766,6 +770,30 @@ export function build(S, opts = {}) {
     if (said.length) p.conversation = said;
   }
   return p;
+}
+
+/* A workout someone found somewhere else, to be read back as exercises (the `transcribe` job):
+   a photo, what they pasted, or both. The photo travels beside the payload, never inside it
+   (jobs.js holds it for the one call); `photo` only says one is attached. Nothing of their own
+   training goes: no plan, no log, no profile, no chat. The job reads what is written, and the
+   library is what it can match the names against. That is the whole of the slice's job here, so
+   it is not narrowed to the equipment or the dumbbells this person owns: a workout from a gym
+   with other kit is still what it says. */
+function transcribePayload(S, opts, now) {
+  const text = typeof opts.note === 'string' ? opts.note.trim().slice(0, TRANSCRIBE_TEXT_MAX) : '';
+  return {
+    coach_contract: CONTRACT,
+    task: 'transcribe',
+    meta: {
+      profile: opts.handle,
+      lang: langTag(opts.lang) || word(S.lang, 16) || 'en',
+      unit: word(S.unit, 8) || 'kg',
+      today: iso(new Date(now))
+    },
+    photo: opts.photo === true,
+    ...(text ? { text } : {}),
+    library: librarySlice(S, [], { keep: trainedIds(S, S.workouts || []), focus: text ? [text] : [], anyKit: true })
+  };
 }
 
 // The last few lines of the chat, so "shorter, like last time" has something to point at.

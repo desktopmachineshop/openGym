@@ -188,6 +188,9 @@ export function httpAdapter(spec) {
     // The two facts the server's job runner branches on. Stated, not inferred from absence.
     spawns: false,
     needsRuntime: false,
+    // Whether a job may carry a photo (`images` on the provider row, providers.js), whose spec
+    // then puts it in its request body. Everyone else is sent text alone.
+    images: !!meta.images,
 
     baseUrl: cfg => baseUrlFor(id, cfg),
 
@@ -233,6 +236,10 @@ export function httpAdapter(spec) {
      */
     async invoke(opts = {}) {
       const { cfg, prompt, system, schema, env, model, timeoutMs = DEFAULT_TIMEOUT_MS, maxTokens = MAX_OUTPUT_TOKENS, fetch: fetchImpl = globalThis.fetch, signal } = opts;
+      // A photo goes only to a provider that takes one. The caller checks first; this is the same
+      // rule at the moment of the call, so a photo never rides on a request that was not built for it.
+      const images = Array.isArray(opts.images) && opts.images.length ? opts.images : null;
+      if (images && !adapter.images) return { code: 1, text: '', stderr: `${id} does not take photos` };
       const base = adapter.baseUrl(cfg);
       if (!base) return { code: -1, text: '', stderr: `no endpoint configured for ${id}`, spawnError: true };
       const key = keyOf(env);
@@ -241,7 +248,7 @@ export function httpAdapter(spec) {
       if (!asked) return { code: 1, text: '', stderr: `no model chosen for ${id} (pick one from the list the endpoint serves)` };
       let chosen = substitutes.get(substituteKey(id, base, asked)) || asked;
 
-      const build = () => spec.body({ model: chosen, prompt, system: system || null, schema: schema || null, maxTokens, base });
+      const build = () => spec.body({ model: chosen, prompt, system: system || null, schema: schema || null, maxTokens, base, ...(images ? { images } : {}) });
       let steps = spec.compat ? (compatProfiles.get(compatKey(id, base, chosen)) || []) : [];
       let body = spec.compat ? applySteps(spec, build(), steps) : build();
       let triedOtherModel = false;

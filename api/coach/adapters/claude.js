@@ -29,6 +29,7 @@ import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { unprivilegedIds } from './spawn.js';
 import { SYSTEM_PROMPT } from '../core/system-prompt.js';
+import { imageBlock } from '../core/adapters/anthropic.js';
 
 const PKG = '@anthropic-ai/claude-agent-sdk';
 const require_ = createRequire(import.meta.url);
@@ -57,6 +58,21 @@ async function sdk() {
   try { cached = await import(PKG); } catch { cached = null; }
   return cached;
 }
+/** Test-only: stand in for the SDK (an object with `query`), or undefined to resolve it again. */
+export function _setSdk(m) { cached = m; }
+
+/* What `query` is handed as its prompt. Text alone stays the plain string it always was. A photo
+   (the `transcribe` job) cannot ride in a string, so that job's one user message is handed over
+   as the SDK's streaming input instead: a single message whose content is the image block and
+   then the text, the Messages API's own shape. The SDK writes it to the runtime's stdin, the
+   pipe the string went down before, and closes stdin once it is sent. Nothing is written to the
+   job directory, no tool is needed to read it (LOCKDOWN still has none), and the runtime is the
+   same unprivileged child as for every other job. */
+export function sdkPrompt(prompt, images) {
+  if (!Array.isArray(images) || !images.length) return prompt;
+  const message = { role: 'user', content: [...images.map(imageBlock), { type: 'text', text: prompt }] };
+  return (async function* one() { yield { type: 'user', message, parent_tool_use_id: null }; })();
+}
 
 /* The package does not expose ./package.json through its exports map, so ask the resolver where
    the entry point landed and read the manifest sitting next to it. Best-effort by design: the
@@ -80,6 +96,8 @@ export default {
   id: 'claude',
   spawns: true,
   runtime: 'Claude Agent SDK',
+  // Takes a photo with a job (sdkPrompt above).
+  images: true,
 
   /* Importing the package is the check: it is exactly what a job will do, and it is the one
      difference between the two build targets. The credential is deliberately not probed here —
@@ -92,7 +110,7 @@ export default {
     return { ok: true, version: v ? `Claude Agent SDK ${v}` : 'Claude Agent SDK' };
   },
 
-  async invoke({ prompt, jobDir, env, model, timeoutMs }) {
+  async invoke({ prompt, images, jobDir, env, model, timeoutMs }) {
     const m = await sdk();
     if (!m) return { code: -1, text: '', stderr: `${PKG} is not installed`, timedOut: false, spawnError: true };
 
@@ -102,7 +120,7 @@ export default {
 
     try {
       for await (const message of m.query({
-        prompt,
+        prompt: sdkPrompt(prompt, images),
         options: {
           ...LOCKDOWN,
           abortController,

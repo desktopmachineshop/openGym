@@ -23,7 +23,7 @@ import { runPipeline } from './core/pipeline.js';
 import { extractJSON } from './core/parse.js';
 import { hashPlan } from './core/plan-hash.js';
 import { buildPrompt } from './core/prompt.js';
-import { waitingProposal } from './core/pending.js';
+import { waitingProposal, isPassing } from './core/pending.js';
 import { handleFor } from './handle.js';
 import { fetchFor } from './node-fetch.js';
 import { privilegeRefusal, unprivilegedIds } from './adapters/spawn.js';
@@ -42,6 +42,9 @@ const COACH_DIR = path.join(DATA, 'coach');
 export const TIMEOUT_MS = Math.max(60000, +process.env.COACH_JOB_TIMEOUT_MS || 5 * 60000);
 const MAX_CONCURRENT = 2;          // these are minutes-scale jobs on often-single-core boxes
 const PENDING_DAYS = 14;           // FR-33
+// A workout read from a photo or text is looked at within minutes, or never: a day, not two weeks,
+// and the proposal it stood in front of comes back when it goes (archive).
+const TRANSCRIBE_HOURS = 24;
 const HISTORY_MAX = 20;
 
 /* ---------- per-user store ---------- */
@@ -143,7 +146,7 @@ export function status(uid) {
     archive(uid, rec, 'expired');
     // Same shape as every other answer: the poll that happens to be the one which expires a
     // proposal must not be the one where the client's cap readout goes undefined.
-    return { job: null, pending: null, cap: capState(uid) };
+    return { job: null, pending: readUser(uid).pending || null, cap: capState(uid) };
   }
   return {
     job: rec.current ? { id: rec.current.id, kind: rec.current.kind, state: rec.current.state, startedAt: rec.current.startedAt } : null,
@@ -162,7 +165,7 @@ function archive(uid, rec, outcome) {
   const history = [...(rec.history || []), {
     id: rec.pending?.id, kind: rec.pending?.kind, outcome, at: Date.now()
   }].slice(-HISTORY_MAX);
-  patchUser(uid, { pending: null, history });
+  patchUser(uid, { pending: isPassing(rec.pending) ? waitingProposal(rec.pending.prev) : null, history });
 }
 
 /* ---------- the queue ---------- */
@@ -198,6 +201,10 @@ export function clampMessage(text) {
 export function enqueue(uid, opts) {
   if (!cfgStore.isEnabled() || !cfgStore.isConnected()) throw new CoachError('off', 'the Coach is not set up on this instance');
   if (inflight.has(uid)) throw new CoachError('busy', 'the Coach is already thinking about your training');
+  // A photo only goes to a provider that takes one. Asked before anything is spent or bound.
+  if (opts.kind === 'transcribe' && opts.photo && !adapterFor(cfgStore.load().provider)?.images) {
+    throw new CoachError('noimages', 'the Coach on this instance cannot read photos');
+  }
 
   const S = readState(uid);
   // Consent is enforced here, server-side, not by the screen that collects it: a UI-only gate
@@ -240,11 +247,13 @@ export function enqueue(uid, opts) {
     id: crypto.randomBytes(8).toString('hex'),
     uid,
     forgetSeq: forgetSeq.get(uid) || 0,
-    kind: opts.kind,                                  // 'create' | 'review' | 'debrief' | 'ask' | 'adapt'
+    kind: opts.kind,                                  // 'create' | 'review' | 'debrief' | 'ask' | 'adapt' | 'transcribe'
     trigger: opts.trigger || 'manual',                // 'manual' | 'scheduled'
     workoutId: opts.workoutId ? String(opts.workoutId).slice(0, 40) : null,
     intake: opts.intake || null,
-    note: clampMessage(opts.note),
+    // Pasted workout text is a programme, not a chat line, so it has the payload's own bound
+    // rather than the admin's message length.
+    note: opts.kind === 'transcribe' ? (opts.note ? String(opts.note).slice(0, payloadLib.TRANSCRIBE_TEXT_MAX) : null) : clampMessage(opts.note),
     refine: clampMessage(opts.refine),
     // A question's running session, sent by the phone (the server never holds `active`). Kept on
     // the in-memory job only, never in the user's file; the payload builder bounds it.
@@ -253,6 +262,11 @@ export function enqueue(uid, opts) {
     // proposal for this workout from one for a workout that has ended).
     focus: opts.kind === 'adapt' && opts.focus && typeof opts.focus === 'object' ? { entry: opts.focus.entry, reason: opts.focus.reason } : null,
     activeId: opts.kind === 'adapt' && typeof opts.activeId === 'string' ? opts.activeId.slice(0, 64) : null,
+    // A `transcribe` job's photo ({ type, data }, checked by core/photo.js). Held on this
+    // in-memory job and nowhere else: never in the user's file, the payload, the instance log or
+    // the job directory, and dropped once the job ends (execute's finally), or with the job when
+    // a forget pulls it from the queue.
+    photo: opts.kind === 'transcribe' && opts.photo ? opts.photo : null,
     lang: payloadLib.langTag(opts.lang),              // the language the app was showing (#303)
     state: 'queued',
     startedAt: Date.now()
@@ -284,6 +298,8 @@ export function whyUnusable(errors) {
 }
 
 function finish(job, result) {
+  // However the job ended, its photo goes with it (a job refused before the call never sent it).
+  job.photo = null;
   cfgStore.logJob({
     at: new Date().toISOString(), uid: job.uid, kind: job.kind, trigger: job.trigger,
     outcome: result.outcome, errorClass: result.errorClass || null,
@@ -359,7 +375,8 @@ async function execute(job) {
     lang: job.lang || (S.langAuto === true ? payloadLib.langTag(process.env.DEFAULT_LANG) : null),
     // The room's medians ride along on a review or a debrief when the admin allows it and
     // this person opted in; null otherwise, and the payload then carries no `cohort` at all.
-    cohort: (job.kind === 'review' || job.kind === 'debrief') ? cohortForPayload(job.uid) : null
+    cohort: (job.kind === 'review' || job.kind === 'debrief') ? cohortForPayload(job.uid) : null,
+    photo: !!job.photo
   });
   // The payload is paid for with the instance's key, and it is built from state the client
   // wrote. The builder bounds each field; a payload that is still bigger than any real training
@@ -380,6 +397,7 @@ async function execute(job) {
 
     const attempt = await runPipeline({
       adapter, cfg, kind: job.kind, payload, model: cfgStore.modelFor(cfg), timeoutMs: TIMEOUT_MS,
+      images: job.photo ? [job.photo] : null,
       // The HTTP adapters take the fetch and the abort signal they are given; the runtime
       // adapters ignore both.
       invokeOpts: { jobDir, env, fetch: fetchFor(TIMEOUT_MS), signal: ctl.signal, maxTokens: cfg.maxOutputTokens }
@@ -396,7 +414,7 @@ async function execute(job) {
       id: job.id,
       kind: job.kind,
       createdAt: Date.now(),
-      expiresAt: Date.now() + PENDING_DAYS * 86400000,
+      expiresAt: Date.now() + (job.kind === 'transcribe' ? TRANSCRIBE_HOURS * 3600000 : PENDING_DAYS * 86400000),
       planHash: hashPlan(payloadLib.canonicalPlan(S)),
       iteration: job.refine ? (pendingCreate?.iteration || 1) + 1 : 1,
       // Nobody asked for a scheduled one, so nobody is watching for it: a phone app has no web
@@ -404,13 +422,15 @@ async function execute(job) {
       ...(job.trigger === 'scheduled' ? { trigger: 'scheduled' } : {}),
       // A debrief names the session it read, so the card can show it after the fact.
       ...(job.kind === 'debrief' ? { workout: payloadLib.workoutMeta(S, job.workoutId) } : {}),
-      ...(job.kind === 'ask' || job.kind === 'adapt' ? { prev: waitingProposal(readUser(job.uid).pending) } : {}),
+      ...(isPassing(job) ? { prev: waitingProposal(readUser(job.uid).pending) } : {}),
       ...(job.kind === 'adapt' ? { activeId: job.activeId, focus: payload.focus } : {}),
       ...attempt.result
     };
     return finish(job, { outcome: 'ready', pending });
   } finally {
     aborts.delete(job.uid);
+    // The photo was for this one call (and its repair round); nothing keeps a reference to it.
+    job.photo = null;
     if (jobDir) removeJobDir(jobDir, unprivilegedIds());
   }
 }
@@ -427,7 +447,7 @@ export function resolvePending(uid, { accepted = [], rejected = [], dismissed = 
     accepted: accepted.length, rejected: rejected.length, at: Date.now()
   }].slice(-HISTORY_MAX);
   // A read answer gives back the proposal it was asked beside (core/pending.js).
-  const back = rec.pending.kind === 'ask' || rec.pending.kind === 'adapt' ? waitingProposal(rec.pending.prev) : null;
+  const back = isPassing(rec.pending) ? waitingProposal(rec.pending.prev) : null;
   writeUser(uid, { ...rec, pending: back, history });
   return { ok: true };
 }

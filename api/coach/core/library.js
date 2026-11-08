@@ -152,7 +152,7 @@ function laneOrder(entries, muscles) {
    slots stay for exercises outside `keep` however much the plan and history pin, so a review has
    something to swap in (#829). It can take the slice past `max`, never past MAX_LIBRARY unless
    `keep` alone does. */
-export function librarySlice(S, equipment, { keep = [], max = MAX_LIBRARY, focus = [], fresh = 0 } = {}) {
+export function librarySlice(S, equipment, { keep = [], max = MAX_LIBRARY, focus = [], fresh = 0, anyKit = false } = {}) {
   const wanted = (equipment || []).map(x => String(x).toLowerCase());
   // A custom exercise's name and body part are whatever the person typed, and its id is
   // whatever the client wrote; all three ride into every prompt. Cut to the bounds payload.js
@@ -164,7 +164,9 @@ export function librarySlice(S, equipment, { keep = [], max = MAX_LIBRARY, focus
   // No equipment stated (or "everything") ⇒ the whole catalogue. Filtering to nothing would
   // leave the Coach unable to propose anything at all, which is a worse failure than a
   // slightly larger payload.
-  const noDumbbells = ownsNoDumbbells(S);
+  // `anyKit`: a slice to match written names against (the `transcribe` job), not to train with,
+  // so owning no dumbbells does not take them out of it.
+  const noDumbbells = !anyKit && ownsNoDumbbells(S);
   const filtered = (wanted.length ? LIBRARY.filter(e => equipmentAllows(wanted, e.id)) : LIBRARY)
     .filter(e => !noDumbbells || !isDumbbellLift(e.id));
   const equipped = filtered.length ? filtered : LIBRARY;

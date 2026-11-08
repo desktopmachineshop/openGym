@@ -3,8 +3,10 @@
  * the server under bare node and by the phone under Vite, with neither reading a file. */
 import { PROMPTS } from './prompts.js';
 
+// The tasks with a prompt of their own, named as the job is; `create` splits on whether it revises.
+const OWN_PROMPT = ['review', 'debrief', 'ask', 'adapt', 'transcribe'];
 export const taskOf = (kind, payload) =>
-  kind === 'review' ? 'review' : kind === 'debrief' ? 'debrief' : kind === 'ask' ? 'ask' : kind === 'adapt' ? 'adapt' : payload && payload.refine ? 'refine' : 'create';
+  OWN_PROMPT.includes(kind) ? kind : payload && payload.refine ? 'refine' : 'create';
 
 /**
  * The prompt in two parts: `system` is the rules — byte-identical for every job of the same

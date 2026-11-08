@@ -11,3 +11,11 @@ export const DATA_CATEGORIES = Object.freeze([
   'profile',     // the intake answers you gave the Coach, including any limitations
   'prefs'        // unit, language, effort scale
 ]);
+
+/* What only one job sends, and only when the person picks it there: a photo or screenshot of a
+ * workout for the `transcribe` job. Not in the list above because no other job carries it, so
+ * a yes to the Coach is not a yes to it: the app asks about it on its own, before the first
+ * photo leaves (frontend lib/coach-consent.js). */
+export const ON_REQUEST_CATEGORIES = Object.freeze([
+  'photo'        // the one picture of a workout you choose, sent with that job and kept nowhere
+]);
