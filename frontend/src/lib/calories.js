@@ -7,6 +7,8 @@
 // default minutes it may still carry. An older app that does not know the key leaves it alone
 // (api/sync-stamps.js keepKeys).
 
+import { isCustomEx } from './exercises.js'
+
 // A long session on an air bike or a ski erg can pass 1,000; nothing a person does in one set
 // reaches 5,000, so a number beyond that is a typo.
 export const KCAL_MAX = 5000
@@ -48,3 +50,23 @@ export function workoutKcal(w) {
   }
   return n
 }
+
+// Where a calorie count means something: on the machines whose console shows one (treadmills,
+// bikes, rowers, ellipticals, stair machines, ergs). Read off the catalogue's equipment and
+// English name. Running in place, a jump rope or a bodyweight drill has no readout to copy.
+const READOUT_EQ = new Set(['stationary bike', 'elliptical machine', 'stepmill machine', 'leverage machine', 'skierg machine'])
+const READOUT = /treadmill|rowing machine|\brower|ergometer|\berg\b|elliptical|cross ?trainer|wave machine|stationary bike|exercise bike|air ?bike|assault|spin bike|recumbent|stepmill|stair ?(master|climber|mill)|stepper|ski ?erg/i
+// "walk (equipment)" is a walk on a machine; its name only says equipment.
+const READOUT_IDS = new Set(['0828'])
+
+/**
+ * Whether a cardio exercise offers Calories as its length. A catalogue exercise does when its
+ * equipment or name is a machine with a console. Your own exercise always does: its name can be
+ * in any language, and an option you never pick costs nothing.
+ */
+export function kcalFits(ex) {
+  if (!ex || typeof ex !== 'object') return false
+  if (isCustomEx(ex)) return true
+  return READOUT_IDS.has(String(ex.id)) || READOUT_EQ.has(String(ex.eq || '').toLowerCase()) || READOUT.test(String(ex.n || ''))
+}
+

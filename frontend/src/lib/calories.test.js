@@ -2,7 +2,8 @@
 // a calorie slot and its sets carry `kcal` and no minutes, and everything that reads a cardio set
 // back reads it by its count, with the session's total in the summaries.
 import { describe, it, expect } from 'vitest'
-import { KCAL_MAX, byKcal, clampKcal, hasKcal, isKcalSet, workoutKcal } from './calories.js'
+import { KCAL_MAX, byKcal, clampKcal, hasKcal, isKcalSet, kcalFits, workoutKcal } from './calories.js'
+import { EXIDX } from './exercises.js'
 import { cardioLength } from './cardio-length.js'
 import { setLabel, buildSets, copyRowAt, exLine, insertWarmupRow, setsRepsOf } from './history.js'
 import { buildPlanBundle, parsePlan } from './plan-share.js'
@@ -147,3 +148,19 @@ describe('a workout\'s calories', () => {
     expect(sets.find(s => s.r > 0)).not.toHaveProperty('kcal')
   })
 })
+
+describe('which cardio offers Calories', () => {
+  it('the machines whose console shows a count', () => {
+    for (const id of ['2259', '3666', '9608', '2138', '3893', '0798', '1161', '2192', '2141', '2140', '2311', '0938', '2331', '4229', '0828'])
+      expect(kcalFits(EXIDX[id]), EXIDX[id].n).toBe(true)
+  })
+  it('not running in place, a rope, a drill or a pool', () => {
+    for (const id of ['0685', '0684', '3556', '3380', '2258', '5214', '10729', '0630'])
+      expect(kcalFits(EXIDX[id]), EXIDX[id].n).toBe(false)
+  })
+  it('your own exercise always does', () => {
+    expect(kcalFits({ id: 'c1', n: 'Laufband', custom: true, eq: 'custom', bp: 'cardio' })).toBe(true)
+    expect(kcalFits(null)).toBe(false)
+  })
+})
+

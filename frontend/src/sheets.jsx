@@ -64,7 +64,7 @@ import { isPyramid, normalizePyramid, normalizePyramidRest, normalizePyramidWeig
 import { MOBILE, shareExport, shareExportBlob } from './lib/mobile.js'
 import { speedUnitOf, toSpeed, fromSpeed } from './lib/speed.js'
 import { clampIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from './lib/incline.js'
-import { clampKcal, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
+import { clampKcal, kcalFits, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
 import { clampKm, distUnitOf, fromDist, KM_MAX, KM_STEP, lengthOf, toDist } from './lib/cardio-length.js'
 import { buildCompletedWorkout, sessionEnd } from './lib/finish-workout.js'
 import { refillAfter } from './lib/rotation.js'
@@ -2373,7 +2373,10 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
     {/* A cardio interval's length: a time, a distance or a calorie count, chosen here, one of them. */}
     {cardio && <div style={{ marginBottom: 14 }}>
       <Segmented className="seg-len" value={cardioLen} onChange={v => setC(x => ({ ...x, len: v }))}
-        options={[{ value: 'min', label: t('Time') }, { value: 'km', label: t('Distance') }, { value: 'kcal', label: t('Calories') }]} />
+        options={[{ value: 'min', label: t('Time') }, { value: 'km', label: t('Distance') },
+          // Calories only where the machine shows them (lib/calories.js kcalFits), or the slot
+          // already counts them.
+          ...(kcalFits(ex) || cardioLen === 'kcal' ? [{ value: 'kcal', label: t('Calories') }] : [])]} />
     </div>}
     <div className="row cfgrow" style={{ marginBottom: mode === 'time' ? 8 : 18 }}>
       {cardio ? <>

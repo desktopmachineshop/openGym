@@ -10,6 +10,7 @@ import { useUI } from './store/useUI.js'
 import { exConfigSheet } from './sheets.jsx'
 
 const ROWER = '1161'       // rowing (with rowing machine)
+const HIGH_KNEES = '3556'  // cardio with no machine
 const mounted = []
 function open(ex, existing) {
   useStore.setState({ S: structuredClone(DEF), user: null })
@@ -96,6 +97,18 @@ describe('distance in a cardio exercise\'s settings', () => {
     const v = open(EXIDX[ROWER], { sets: 4, km: 2, speed: 10 })
     expect(v.picked()).toBe('Distance')
     expect(v.field('Distance (km)').value).toBe('2')
+  })
+})
+
+describe('calories only where the machine shows them', () => {
+  it('a cardio drill offers Time and Distance only', () => {
+    const v = open(EXIDX[HIGH_KNEES], { sets: 1, min: 10, speed: 8 })
+    expect(v.lengths()).toEqual(['Time', 'Distance'])
+  })
+  it('a slot that already counts calories keeps the choice', () => {
+    const v = open(EXIDX[HIGH_KNEES], { sets: 1, kcal: 80, speed: 8 })
+    expect(v.lengths()).toEqual(['Time', 'Distance', 'Calories'])
+    expect(v.picked()).toBe('Calories')
   })
 })
 
