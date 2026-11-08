@@ -2123,6 +2123,11 @@ export default {
   '{0}% incline': '%{0} eğim',
   '{0} kcal': '{0} kcal',
   'kcal': 'kcal',
+  'Distance': 'Mesafe',
+  'Distance (km)': 'Mesafe (km)',
+  'Distance (mi)': 'Mesafe (mil)',
+  'Further than last time': 'Geçen seferden daha uzun mesafe',
+  'Less distance than last time': 'Geçen seferden daha kısa mesafe',
   'More calories than last time': 'Geçen seferden daha fazla kalori',
   'Fewer calories than last time': 'Geçen seferden daha az kalori',
   // --- workout detail: Garmin .fit export ---

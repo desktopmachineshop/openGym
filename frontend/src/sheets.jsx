@@ -64,7 +64,8 @@ import { isPyramid, normalizePyramid, normalizePyramidRest, normalizePyramidWeig
 import { MOBILE, shareExport, shareExportBlob } from './lib/mobile.js'
 import { speedUnitOf, toSpeed, fromSpeed } from './lib/speed.js'
 import { clampIncline, inclineFits, INCLINE_MAX, INCLINE_STEP } from './lib/incline.js'
-import { byKcal, clampKcal, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
+import { clampKcal, kcalFits, KCAL_MAX, KCAL_STEP, workoutKcal } from './lib/calories.js'
+import { clampKm, distUnitOf, fromDist, KM_MAX, KM_STEP, lengthOf, toDist } from './lib/cardio-length.js'
 import { buildCompletedWorkout, sessionEnd } from './lib/finish-workout.js'
 import { refillAfter } from './lib/rotation.js'
 import { isWarmupRow, hasCompletedWork } from './lib/workout-model.js'
@@ -1419,7 +1420,7 @@ function ExerciseHistory({ exId }) {
   const canRel = rel.length >= 2
   const onRel = curve === 'bodyweight' && canRel
   const onE1 = !onRel && curve === 'e1rm' && h.e1rmPoints.length > 0
-  const unit = h.metric === 'weight' ? st.unit : h.metric === 'reps' ? t('reps') : h.metric === 'sec' ? 's' : h.metric === 'kcal' ? t('kcal') : t('min')
+  const unit = h.metric === 'weight' ? st.unit : h.metric === 'reps' ? t('reps') : h.metric === 'sec' ? 's' : h.metric === 'kcal' ? t('kcal') : h.metric === 'km' ? 'km' : t('min')
   const e1Best = useMemo(() => Math.max(0, ...h.e1rmPoints.map(p => p.y)), [h])
   const relBest = useMemo(() => Math.max(0, ...rel.map(p => p.y)), [rel])
   const curveOpts = []
@@ -2212,9 +2213,9 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
   // in its `mode` (modeOf reads it before the body part).
   const mode = modeOf({ ...c, id: ex.id })
   const cardio = cardioEx && mode === 'cardio'
-  // How long a cardio interval is: a time or a calorie count, one or the other (lib/calories.js).
-  // `len` lives only in the sheet; the slot says it by carrying `min` or `kcal`.
-  const cardioLen = c.len || (byKcal(c) ? 'kcal' : 'min')
+  // How long a cardio interval is: a time, a distance or a calorie count (lib/cardio-length.js).
+  // `len` lives only in the sheet; the slot says it by carrying `min`, `km` or `kcal`.
+  const cardioLen = c.len || lengthOf(c)
   // Both default from the dataset and are then whatever the config says — see isBw.
   const bw = !cardio && isBw({ ...c, id: ex.id })
   const perSide = isPerSide(c)
@@ -2309,8 +2310,9 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
     }
     // The treadmill's grade, only when it has one, so a flat slot keeps the shape it had.
     const incline = clampIncline(c.incline)
-    // Minutes or calories, never both: a calorie slot has no minutes (lib/calories.js).
-    const length = cardioLen === 'kcal' ? { kcal: clampKcal(c.kcal) || 50 } : { min: Math.max(1, Math.round(c.min) || 20) }
+    // Minutes, distance or calories, one of them: a distance or calorie slot has no minutes.
+    const length = cardioLen === 'kcal' ? { kcal: clampKcal(c.kcal) || 50 }
+      : cardioLen === 'km' ? { km: clampKm(c.km) || 1 } : { min: Math.max(1, Math.round(c.min) || 20) }
     if (cardio) saveAs({ sets, ...length, speed: Math.max(0, c.speed || 8), ...(incline > 0 ? { incline } : {}), ...withNote, ...withRest, ...withSubs })
     else if (mode === 'time') saveAs({ sets, mode: 'time', sec: Math.max(1, Math.round(c.sec) || 45), weight: Math.max(0, c.weight || 0), ...flags, ...(perSide ? { side: true } : {}), ...prog, ...withNote, ...withWarmups, ...withRest, ...withSetRests, ...withMeant, ...withFailure, ...withSubs })
     else {
@@ -2368,15 +2370,21 @@ function ExConfig({ ex, existing, onSave, onDelete, onReplace, close, routine, i
       <Segmented className="seg-range" value={mode} onChange={setMode}
         options={[...(cardioEx ? [{ value: 'cardio', label: t('Cardio') }] : []), { value: 'reps', label: t('Reps') }, { value: 'time', label: t('Time') }]} />
     </div>
-    {/* A cardio interval's length: a time or a calorie count, chosen here, one or the other. */}
+    {/* A cardio interval's length: a time, a distance or a calorie count, chosen here, one of them. */}
     {cardio && <div style={{ marginBottom: 14 }}>
       <Segmented className="seg-len" value={cardioLen} onChange={v => setC(x => ({ ...x, len: v }))}
-        options={[{ value: 'min', label: t('Time') }, { value: 'kcal', label: t('Calories') }]} />
+        options={[{ value: 'min', label: t('Time') }, { value: 'km', label: t('Distance') },
+          // Calories only where the machine shows them (lib/calories.js kcalFits), or the slot
+          // already counts them.
+          ...(kcalFits(ex) || cardioLen === 'kcal' ? [{ value: 'kcal', label: t('Calories') }] : [])]} />
     </div>}
     <div className="row cfgrow" style={{ marginBottom: mode === 'time' ? 8 : 18 }}>
       {cardio ? <>
         <Stepper label={t('Intervals')} value={c.sets} step={1} decimal={false} onChange={v => setC(x => ({ ...x, sets: v }))} />
-        {cardioLen === 'kcal'
+        {cardioLen === 'km'
+          ? <Stepper label={distUnitOf(speedUnit) === 'mi' ? t('Distance (mi)') : t('Distance (km)')} value={toDist(c.km || 1, speedUnit)} step={KM_STEP} min={0.1} max={toDist(KM_MAX, speedUnit)}
+            onChange={v => setC(x => ({ ...x, km: clampKm(fromDist(v, speedUnit)) }))} />
+          : cardioLen === 'kcal'
           ? <Stepper label={t('Calories')} value={c.kcal || 50} step={KCAL_STEP} min={1} max={KCAL_MAX} decimal={false} onChange={v => setC(x => ({ ...x, kcal: clampKcal(v) }))} />
           : <Stepper label={t('Minutes')} value={c.min} step={1} decimal={false} onChange={v => setC(x => ({ ...x, min: v }))} />}
         {/* Typed and stepped in the profile's unit, kept in km/h (lib/speed.js). */}

@@ -2178,6 +2178,11 @@ export default {
   '{0}% incline': 'ميل {0}%',
   '{0} kcal': '{0} سعرة',
   'kcal': 'سعرة',
+  'Distance': 'المسافة',
+  'Distance (km)': 'المسافة (كم)',
+  'Distance (mi)': 'المسافة (ميل)',
+  'Further than last time': 'مسافة أطول من المرة الماضية',
+  'Less distance than last time': 'مسافة أقصر من المرة الماضية',
   'More calories than last time': 'سعرات أكثر من المرة الماضية',
   'Fewer calories than last time': 'سعرات أقل من المرة الماضية',
   // --- workout detail: Garmin .fit export ---

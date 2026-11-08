@@ -18,7 +18,8 @@ import { MEASUREMENT_FIELDS, builtinCsvColumn, customCsvColumn, customDisplayVal
 import { hasCompletedWork, isWarmupRow, isFailureSet, isSideSet, dropsOf } from './workout-model.js'
 import { workoutDay } from './history.js'
 import { setNoteOf } from './set-notes.js'
-import { clampKcal, hasKcal, isKcalSet } from './calories.js'
+import { clampKcal, hasKcal } from './calories.js'
+import { clampKm, hasKm, setLengthOf } from './cardio-length.js'
 
 export const WORKOUT_COLUMNS = [
   'date', 'start_time', 'end_time', 'workout', 'workout_note', 'exercise', 'exercise_id', 'body_part',
@@ -56,6 +57,8 @@ const stamp = ms => {
  * gets more, as many as our importer needs to read the same speed back (it rounds to 0.01 km/h).
  */
 function distanceKm(s) {
+  // A distance interval says its distance outright (lib/cardio-length.js).
+  if (setLengthOf(s) === 'km') return String(clampKm(s.km))
   const min = Number(s.min) || 0, speed = Number(s.speed) || 0
   const km = speed * min / 60
   if (!(km > 0)) return '0'
@@ -100,14 +103,14 @@ export function workoutRows(S, { from = null, to = null } = {}) {
       // The entry's note rides on its first row only: the importer keeps one note per exercise.
       // A set's own note (lib/set-notes.js) on that set's row, its first one for a per-side set.
       const push = (cells, setNote = '') => { rows.push([...head, ...exCells, ...cells, noteLeft, setNote]); noteLeft = '' }
-      const cardio = s => !(s.r > 0) && (s.min > 0 || s.speed > 0 || hasKcal(s))
+      const cardio = s => !(s.r > 0) && (s.min > 0 || s.speed > 0 || hasKcal(s) || hasKm(s))
       for (const s of e.sets || []) {
         if (!hasCompletedWork(s)) continue
         no++
         const type = isWarmupRow(s) ? 'warmup' : isFailureSet(s) ? 'failure' : 'normal'
         let setNote = setNoteOf(s)
         if (cardio(s)) {
-          push([no, type, '', '', unit, '', '', '', distanceKm(s), isKcalSet(s) ? '' : n(Math.round((Number(s.min) || 0) * 60)), s.incline != null ? n(s.incline) : '', hasKcal(s) ? n(clampKcal(s.kcal)) : ''], setNote)
+          push([no, type, '', '', unit, '', '', '', distanceKm(s), setLengthOf(s) !== 'min' ? '' : n(Math.round((Number(s.min) || 0) * 60)), s.incline != null ? n(s.incline) : '', hasKcal(s) ? n(clampKcal(s.kcal)) : ''], setNote)
           continue
         }
         const effort = x => [x.rpe != null ? n(x.rpe) : '', x.rir != null ? n(x.rir) : '']

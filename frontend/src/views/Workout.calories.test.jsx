@@ -87,3 +87,31 @@ describe('a calorie interval in the workout', () => {
     expect(container.querySelector('button[aria-label="Increase duration"]')).not.toBe(null)
   })
 })
+
+describe('a distance interval in the workout', () => {
+  it('has Distance where Duration was, in km, stored on the set with no minutes', () => {
+    mount(BIKE, [{ km: 2, speed: 25, done: false }], { km: 2 })
+    expect(heads()).toEqual(['Distance (km)', 'Speed (km/h)'])
+    expect(firstCell().querySelector('input').value).toBe('2')
+    act(() => firstCell().querySelector('button[aria-label="Increase"]').click())
+    expect(stored()).toEqual({ km: 2.5, speed: 25, done: false })
+    type(firstCell().querySelector('input'), '5.25')
+    expect(stored().km).toBe(5.25)
+  })
+
+  it('shows and takes miles when the profile reads mph, and stores km', () => {
+    mount(BIKE, [{ km: 1.609344, speed: 25, done: false }], { km: 1.609 }, {})
+    act(() => useStore.setState(st => ({ S: { ...st.S, speedUnit: 'mph' } })))
+    expect(heads()[0]).toBe('Distance (mi)')
+    expect(firstCell().querySelector('input').value).toBe('1')
+    type(firstCell().querySelector('input'), '3')
+    expect(stored().km).toBe(4.828)
+  })
+
+  it('has its own stepper in the focus view', () => {
+    mount(BIKE, [{ km: 2, speed: 25, done: false }], { km: 2 }, { workoutView: 'focus' })
+    act(() => container.querySelector('button[aria-label="Increase distance"]').click())
+    expect(stored().km).toBe(2.5)
+  })
+})
+

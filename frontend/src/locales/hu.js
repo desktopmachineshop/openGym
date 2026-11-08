@@ -2126,6 +2126,11 @@ export default {
   '{0}% incline': '{0}% emelkedő',
   '{0} kcal': '{0} kcal',
   'kcal': 'kcal',
+  'Distance': 'Távolság',
+  'Distance (km)': 'Távolság (km)',
+  'Distance (mi)': 'Távolság (mi)',
+  'Further than last time': 'Messzebb, mint legutóbb',
+  'Less distance than last time': 'Rövidebb táv, mint legutóbb',
   'More calories than last time': 'Több kalória, mint legutóbb',
   'Fewer calories than last time': 'Kevesebb kalória, mint legutóbb',
   // --- workout detail: Garmin .fit export ---
