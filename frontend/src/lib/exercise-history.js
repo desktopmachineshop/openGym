@@ -3,7 +3,7 @@ import { completedVolumeOf, isWarmupRow } from './workout-model.js'
 import { bestSetOf } from './onerm.js'
 import { beatsWeight } from './exercises.js'
 import { currentDbLoad, historyAs, volumeFactor, workoutAs } from './dumbbells.js'
-import { isKcalSet } from './calories.js'
+import { setLengthOf } from './cardio-length.js'
 
 // One exercise's past, read back for the history sheet (issue #43): a chart series and the
 // last few sessions, derived in a single pass over the log so the sheet can memoise the
@@ -57,12 +57,12 @@ export function exerciseHistory(S, exId, { limit = HISTORY_SESSIONS } = {}) {
 
   const mode = logged[logged.length - 1].mode
   const repsOnly = mode === 'reps' && !logged.some(l => l.mode === 'reps' && bestWeightForEntry(l.en) > 0)
-  // Cardio measured in calories charts the calories (lib/calories.js), the way a timed one charts
-  // its minutes: by how the latest session measured it.
-  const metric = mode === 'cardio' ? (logged.at(-1).rows.some(isKcalSet) ? 'kcal' : 'min') : mode === 'time' ? 'sec' : repsOnly ? 'reps' : 'weight'
+  // Cardio measured in distance or calories charts that (lib/cardio-length.js), the way a timed
+  // one charts its minutes: by how the latest session measured it.
+  const metric = mode === 'cardio' ? (logged.at(-1).rows.map(setLengthOf).find(m => m !== 'min') || 'min') : mode === 'time' ? 'sec' : repsOnly ? 'reps' : 'weight'
   const valueOf = ({ en, rows }) => {
     if (metric === 'min') return rows.reduce((a, s) => a + (Number(s.min) || 0), 0)
-    if (metric === 'kcal') return rows.reduce((a, s) => a + (isKcalSet(s) ? Number(s.kcal) : 0), 0)
+    if (metric === 'kcal' || metric === 'km') return rows.reduce((a, s) => a + (setLengthOf(s) === metric ? Number(s[metric]) : 0), 0)
     if (metric === 'sec') return Math.max(0, ...rows.map(s => Number(s.sec) || 0))
     if (metric === 'reps') return Math.max(0, ...rows.map(completedRepsOf))
     return bestWeightForEntry(en)
@@ -112,8 +112,8 @@ export function exerciseHistory(S, exId, { limit = HISTORY_SESSIONS } = {}) {
  * Returns { d, set, target } or null.
  */
 export function bestSetFor(S, exId, mode = modeOf({ id: exId }), as) {
-  // Cardio: minutes, then calories (a calorie interval has no minutes), then speed.
-  const keys = s => mode === 'cardio' ? [Number(s.min) || 0, isKcalSet(s) ? Number(s.kcal) : 0, Number(s.speed) || 0]
+  // Cardio: minutes, then distance, then calories (those intervals have no minutes), then speed.
+  const keys = s => mode === 'cardio' ? [Number(s.min) || 0, setLengthOf(s) === 'km' ? Number(s.km) : 0, setLengthOf(s) === 'kcal' ? Number(s.kcal) : 0, Number(s.speed) || 0]
     : mode === 'time' ? [Number(s.sec) || 0, Number(s.w) || 0]
       : [Number(s.w) || 0, Number(s.r) || 0]
   const better = (a, b) => {

@@ -2123,6 +2123,11 @@ export default {
   '{0}% incline': '{0}% ढलान',
   '{0} kcal': '{0} kcal',
   'kcal': 'kcal',
+  'Distance': 'दूरी',
+  'Distance (km)': 'दूरी (कि.मी.)',
+  'Distance (mi)': 'दूरी (मील)',
+  'Further than last time': 'पिछली बार से ज़्यादा दूरी',
+  'Less distance than last time': 'पिछली बार से कम दूरी',
   'More calories than last time': 'पिछली बार से ज़्यादा कैलोरी',
   'Fewer calories than last time': 'पिछली बार से कम कैलोरी',
   // --- workout detail: Garmin .fit export ---
