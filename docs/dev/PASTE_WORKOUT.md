@@ -52,14 +52,42 @@ returns the same intermediate list. It follows the existing jobs:
 
 ### 3. A photo or screenshot (images to the Coach)
 
-The Coach sends no images today, so this is the largest step and comes last:
+The Coach sent no images, so this is the largest step. It was built first, on its own branch,
+with the Claude providers only:
 
-- an `images` capability per provider, checked like the runtime is today; the option shows only
-  when the chosen provider and model accept images;
+- an `images` capability per provider (`api/coach/config.js`, `core/providers.js`), carried to
+  the app as `images` in `/api/config` and the disclosure; the photo action shows only when the
+  provider in use has it. Today that is the Anthropic API (server, and the phone's own key), the
+  Claude Agent SDK and the fixture. Every Claude model reads images, so the check is per provider,
+  not per model;
 - the photo goes once, with the `transcribe` job, and is not stored on the server or in the
-  profile;
-- a new consent category, "a photo or screenshot you pick", named on the consent sheet before
-  the first one is sent.
+  profile: it is held on the in-memory job and dropped when the job ends, never in the Coach's
+  file, the job log or the job directory. The app downscales it on a canvas first (1568 px on
+  the longest edge, JPEG), and the server checks type, bytes and size (`core/photo.js`);
+- a new consent category, "the photo or screenshot you pick, sent once and not kept"
+  (`ON_REQUEST_CATEGORIES` in `core/categories.js`), named on the consent sheet before the first
+  one is sent, and kept as its own yes beside the provider's.
+
+How it came out, where it differs from the plan above:
+
+- **The `transcribe` job of step 2 exists with it.** The job takes a photo, pasted text, or
+  both, so free text already reaches the Coach this way; step 2 is then only about offering it
+  without a photo on providers that take none. Its payload is the text, a "photo attached" flag,
+  unit and language, and a library slice to match against, none of the person's training, so the
+  pasted text is covered by "Anything you type to the Coach" on the consent sheet.
+- **Ids only when sure.** The answer gives a library `id` only when the model is certain; an id
+  that is not one is dropped rather than repaired, and every name without one goes through the
+  importer's resolver (`resolveExercise`). A name with several matches shows them as choices.
+- **The labels say "photo"** ("Freestyle from a photo or screenshot" on the Start screen, "From
+  a photo" in the routine editor) while there is no parser to paste into; they widen to "Paste a
+  workout" / "Add from text or photo" when step 1 lands.
+- **The review step is its own sheet** (`components/TranscribeSheet.jsx`) until #931 lands. The
+  rows and what they become are `lib/workout-transcribe.js`, tested beside it: units converted to
+  the profile's, a weight that was not written opened at last time's, a "max" set opened at 0
+  reps for the person to fill in, warm-ups and the meaning of a dumbbell weight as for an exercise
+  picked by hand.
+- **A reading waits a day, not two weeks**, in the Coach's pending slot, and gives back a review
+  it stood in front of, as a question in the chat does.
 
 ## Matching and the review step
 
