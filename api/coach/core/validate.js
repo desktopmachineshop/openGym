@@ -882,3 +882,82 @@ export function validateAdapt(data, today, ctx = {}) {
   if (!changes.length) return { ok: true, nochange: true, reading: clampStr(data.summary || data.reading || '', 600) };
   return { ok: true, proposal: { summary: clampStr(data.summary, 600), changes } };
 }
+
+/* =============================== a workout read back =============================== */
+
+// The bounds of a workout read from a photo or pasted text (the `transcribe` job). The same
+// ceilings the app's own logging takes (frontend lib/log-workout.js LOG_LIMITS): nobody writes
+// 41 exercises on a whiteboard, or 1,000 reps of anything.
+export const TRANSCRIBE_LIMITS = Object.freeze({ exercises: 40, sets: 50, reps: 1000, seconds: 6 * 3600, kg: 2000, unreadable: 20 });
+const WEIGHT_UNITS = ['kg', 'lb'];
+
+/**
+ * Validate a workout read back from what someone pasted or photographed. Nothing in it is applied:
+ * it is a list the person checks, fixes and confirms on the phone, so the judgement here is about
+ * shape, not advice. The one rule it shares with every other job is the library's: an `id` that
+ * is not an exercise in it, or one of the person's own, never comes out of here. Such an id is
+ * dropped rather than refused, because the written name is the answer and the app matches it
+ * itself (lib/log-workout.js resolveExercise); a repair round would be paid for a guess.
+ *
+ * An empty list is a "nothing to read" answer, with what could not be read as its reading.
+ * Returns { ok, proposal:{ title, exercises:[{ name, id, note?, sets:[{ reps?, repsMax?, seconds?,
+ * weight?, unit? }] }], unreadable } } | { ok, nochange, reading } | { ok:false, errors }.
+ */
+export function validateTranscribe(data, ctx = {}) {
+  if (!data || typeof data !== 'object') return fail(['the answer was not an object']);
+  const list = Array.isArray(data.exercises) ? data.exercises : null;
+  if (!list) return fail(['exercises must be an array: one entry per exercise, in the order written (an empty array when there is none)']);
+  const unreadable = (Array.isArray(data.unreadable) ? data.unreadable : [])
+    .filter(isStr).slice(0, TRANSCRIBE_LIMITS.unreadable).map(x => clampStr(x.trim(), 200));
+  if (!list.length) return { ok: true, nochange: true, reading: clampStr(unreadable.join(' · '), 600) };
+  const own = new Set(ctx.customIds || []);
+  const errors = [];
+  const exercises = [];
+  list.slice(0, TRANSCRIBE_LIMITS.exercises).forEach((ex, k) => {
+    const where = `exercises[${k}]`;
+    if (!ex || typeof ex !== 'object') { errors.push(`${where} is not an object`); return; }
+    if (!isStr(ex.name)) { errors.push(`${where}.name is required: the exercise as it is written`); return; }
+    const sets = Array.isArray(ex.sets) ? ex.sets.slice(0, TRANSCRIBE_LIMITS.sets) : [];
+    const out = [];
+    let reps = false, timed = false;
+    sets.forEach((s, j) => {
+      const at = `${where}.sets[${j}]`;
+      if (!s || typeof s !== 'object') { errors.push(`${at} is not an object`); return; }
+      const row = {};
+      if (s.reps != null) {
+        if (!isInt(s.reps, 1, TRANSCRIBE_LIMITS.reps)) { errors.push(`${at}.reps must be a whole number of reps, 1-${TRANSCRIBE_LIMITS.reps}`); return; }
+        row.reps = s.reps; reps = true;
+        if (isInt(s.repsMax, s.reps + 1, TRANSCRIBE_LIMITS.reps)) row.repsMax = s.repsMax;
+      }
+      if (s.seconds != null) {
+        if (!isInt(s.seconds, 1, TRANSCRIBE_LIMITS.seconds)) { errors.push(`${at}.seconds must be a whole number of seconds, 1-${TRANSCRIBE_LIMITS.seconds}`); return; }
+        row.seconds = s.seconds; timed = true;
+      }
+      if (row.reps != null && row.seconds != null) { errors.push(`${at} has both reps and seconds — a set is one or the other`); return; }
+      const unit = WEIGHT_UNITS.includes(s.unit) ? s.unit : null;
+      const max = unit === 'lb' ? Math.round(TRANSCRIBE_LIMITS.kg / 0.45359237) : TRANSCRIBE_LIMITS.kg;
+      if (isNum(s.weight) && s.weight >= 0 && s.weight <= max) {
+        row.weight = s.weight;
+        if (unit) row.unit = unit;
+      }
+      out.push(row);
+    });
+    if (reps && timed) { errors.push(`${where} mixes sets in reps with sets in seconds — one exercise is all reps or all seconds`); return; }
+    const id = isStr(ex.id) && (libraryHas(ex.id) || own.has(ex.id)) ? ex.id : null;
+    exercises.push({
+      name: clampStr(ex.name.trim(), 80),
+      id,
+      ...(isStr(ex.note) ? { note: clampStr(ex.note.trim(), 200) } : {}),
+      sets: out
+    });
+  });
+  if (errors.length) return fail(errors);
+  return {
+    ok: true,
+    proposal: {
+      ...(isStr(data.title) ? { title: clampStr(data.title.trim(), 80) } : {}),
+      exercises,
+      unreadable
+    }
+  };
+}

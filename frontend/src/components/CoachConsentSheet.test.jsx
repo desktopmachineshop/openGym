@@ -81,6 +81,23 @@ describe('asking', () => {
     await expect(p).resolves.toBe(false)
   })
 
+  it('a photo is named on its own: with everything else the first time, alone once the rest was allowed', async () => {
+    let p
+    await act(async () => { p = askAiConsent(server, { photo: true }) })
+    expect(host.textContent).toContain('Send your training to Google Gemini?')
+    expect(host.textContent).toContain('Your plan')
+    expect(host.textContent).toContain('The photo or screenshot you pick, sent once and not kept')
+    await click(button('Allow'))
+    await expect(p).resolves.toBe(true)
+    await act(async () => { p = askAiConsent(server, { photo: true, already: true }) })
+    expect(host.textContent).toContain('Send a photo to Google Gemini?')
+    expect(host.textContent).toContain('The photo or screenshot you pick')
+    expect(host.textContent).not.toContain('Your plan')
+    expect(host.textContent).not.toMatch(/—/)
+    await click(button('Not now'))
+    await expect(p).resolves.toBe(false)
+  })
+
   it('a sheet closed any other way (swiped down, the backdrop) is a "not now", not a hang', async () => {
     let p
     await act(async () => { p = askAiConsent(server) })
@@ -98,6 +115,9 @@ describe('the AI data sharing list', () => {
     await act(async () => { await allowAi(device) })
     expect(host.textContent).toContain('openrouter.ai')
     expect(host.textContent).toContain('With your API key')
+    expect(host.textContent).not.toContain('Photos too')
+    await act(async () => { await allowAi(device, { photo: true }) })
+    expect(host.textContent).toContain('Photos too')
   })
 
   it('withdrawing forgets the answer; for the server it also stops the automatic reviews', async () => {

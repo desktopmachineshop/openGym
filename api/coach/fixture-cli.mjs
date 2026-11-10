@@ -69,6 +69,39 @@ if (MODE === 'nochange' || (kind === 'review' && !(P.window?.workouts || []).len
   out({ coach_contract: 1, nochange: true, reading: 'Not enough new training to read anything into yet — keep logging and ask again in a week.' });
 }
 
+// transcribe: a workout read back from a photo or pasted text. The fixture cannot see a photo;
+// the adapter tells it one arrived (the FIXTURE PHOTOS line after the prompt), and the title says
+// so, so a test can tell the photo reached the provider. Pasted text is read one exercise a line
+// in the plainest shape ("Squat 5x5 @ 100kg", "Plank 3x60s"), named back as written; without
+// any, a fixed workout from the library, plus one only named (the app matches that one itself)
+// and one line it "could not read".
+if (kind === 'transcribe') {
+  const photos = (() => { const m = prompt.match(/FIXTURE PHOTOS: (\[.*\])/); try { return m ? JSON.parse(m[1]) : []; } catch { return []; } })();
+  const lib = P.library || [];
+  const byName = new Map(lib.map(e => [String(e.n || '').toLowerCase(), e.id]));
+  const exercises = [], unreadable = [];
+  for (const line of String(P.text || '').split('\n').map(l => l.trim()).filter(Boolean)) {
+    const m = line.match(/^(.+?)\s+(\d+)\s*x\s*(\d+)\s*(s)?(?:\s*@\s*(\d+(?:\.\d+)?)\s*(kg|lb)?)?$/i);
+    if (!m) { unreadable.push(line); continue; }
+    const set = { [m[4] ? 'seconds' : 'reps']: +m[3], ...(m[5] ? { weight: +m[5], ...(m[6] ? { unit: m[6].toLowerCase() } : {}) } : {}) };
+    const id = byName.get(m[1].toLowerCase());
+    exercises.push({ name: m[1], ...(id ? { id } : {}), sets: Array.from({ length: +m[2] }, () => ({ ...set })) });
+  }
+  if (!P.text) {
+    const pick = i => lib[i % Math.max(1, lib.length)] || { id: 'unknown', n: 'Unknown' };
+    exercises.push({ name: pick(0).n, id: pick(0).id, sets: [1, 2, 3].map(() => ({ reps: 8, weight: 60, unit: 'kg' })) });
+    exercises.push({ name: pick(1).n, id: pick(1).id, note: 'superset with the next', sets: [{ reps: 12 }, { reps: 10 }, { reps: 8 }] });
+    exercises.push({ name: 'Plank', sets: [{ seconds: 45 }, { seconds: 45 }] });
+    unreadable.push('21-15-9 thrusters and pull-ups, for time');
+  }
+  out({
+    coach_contract: 1,
+    title: photos.length ? `Fixture workout (photo, ${Math.round(photos[0].chars * 3 / 4 / 1024)} KB)` : 'Fixture workout',
+    exercises,
+    unreadable
+  });
+}
+
 if (kind === 'create') {
   const lib = (P.library || []).slice(0, 6);
   const ex = (i) => lib[i % Math.max(1, lib.length)] || { id: 'unknown' };

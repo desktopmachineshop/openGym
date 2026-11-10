@@ -49,14 +49,21 @@ export const COACH_DISABLED = /^(1|true|yes|on)$/i.test(process.env.COACH_DISABL
 // providers arrive with their adapters; this PR ships only the in-repo fixture, so an instance
 // can be exercised end to end without an AI account.
 export const PROVIDERS = {
-  fixture: { label: 'Fixture (testing)', runtime: 'Fixture', apiKeyEnv: null, oauthEnv: null },
+  // `images`: the provider can be sent a photo with a job (the `transcribe` job). Stated per
+  // provider, never assumed: a provider without it is never offered the photo action. The fixture
+  // takes one so the loop can be walked without an account; it is told the photo arrived, and
+  // never reads it (fixture-cli.mjs).
+  fixture: { label: 'Fixture (testing)', runtime: 'Fixture', apiKeyEnv: null, oauthEnv: null, images: true },
   // `apiKeyEnv` / `oauthEnv` name the variable jobEnv injects the credential as; the runtime
   // reads it from its environment and from nothing else, which is what makes the sanitised env
   // the only channel a credential can travel down. `claude setup-token` mints the long-lived
   // token that rides in CLAUDE_CODE_OAUTH_TOKEN — hence setupToken rather than a device login.
   claude: {
     label: 'Claude (Anthropic)', runtime: 'Claude Agent SDK',
-    apiKeyEnv: 'ANTHROPIC_API_KEY', oauthEnv: 'CLAUDE_CODE_OAUTH_TOKEN', setupToken: true
+    apiKeyEnv: 'ANTHROPIC_API_KEY', oauthEnv: 'CLAUDE_CODE_OAUTH_TOKEN', setupToken: true,
+    // The photo goes to the runtime as an image block on its one user message, over the same
+    // stdin pipe as the prompt (adapters/claude.js): no file, no tool, no new privilege.
+    images: true
   },
   // Codex keeps a refreshable login cache in $CODEX_HOME rather than taking a token on the
   // environment, so it is the one provider that needs somewhere durable to write. That
@@ -327,7 +334,9 @@ export function isConnected() {
 export function publicConfig() {
   if (!isEnabled() || !isConnected()) return null;
   const cfg = load();
-  return { enabled: true, provider: cfg.provider, providerLabel: providerMeta(cfg).label, authMode: cfg.authMode, community: !!cfg.community };
+  // `images`: whether this provider takes a photo with a job, so the app shows the photo action
+  // only where it can work.
+  return { enabled: true, provider: cfg.provider, providerLabel: providerMeta(cfg).label, authMode: cfg.authMode, community: !!cfg.community, images: !!providerMeta(cfg).images };
 }
 
 /**

@@ -5,7 +5,7 @@ import { useUI } from '../store/useUI.js'
 import { exOr } from '../lib/exercises.js'
 import { activeProfile, exAvailable } from '../lib/equipment.js'
 import { uid, exerciseNameText } from '../lib/format.js'
-import { t, exerciseNameFor, exerciseNameClass } from '../lib/i18n.js'
+import { t, tn, exerciseNameFor, exerciseNameClass } from '../lib/i18n.js'
 import { supersetUnits, moveRoutineEntry, cleanupSg, exLine, pickedExerciseConfig } from '../lib/history.js'
 import { Thumb } from '../components/Media.jsx'
 import { glyphPicker, exercisePicker, exConfigSheet, confirmSheet, supersetSheet, printPlanSheet } from '../sheets.jsx'
@@ -24,6 +24,11 @@ import { POLICIES_FOR, POLICY_NAME, POLICY_DESC, profileRule } from '../lib/prog
 import BodyMap from '../components/BodyMap.jsx'
 import { loadOfRoutine, rankOf, MUSCLE_NAME } from '../lib/muscles.js'
 import { viewTarget, exUnitOf } from '../lib/ex-unit.js'
+import { useCoachGate } from '../lib/use-coach-gate.js'
+import { hasConsent } from '../lib/coach.js'
+import { coachTakesPhotos } from '../lib/coach-api.js'
+import { transcribeSheet } from '../components/TranscribeSheet.jsx'
+import { routineExercises } from '../lib/workout-transcribe.js'
 
 export const ROUTINE_LONG_PRESS_MS = 380
 export const ROUTINE_DRAG_SLOP = 8
@@ -368,6 +373,12 @@ export default function RoutineEdit() {
   const S = useStore(s => s.S)
   const update = useStore(s => s.update)
   const toast = useUI(s => s.toast)
+  // "Add from a photo" (the Coach's `transcribe` job), where the Coach is set up and agreed to and
+  // its provider reads photos: the exercises read and checked are appended to this routine.
+  const config = useStore(s => s.config)
+  const coachLocal = useStore(s => s.coachLocal)
+  const coachGate = useCoachGate()
+  const fromPhoto = coachGate.ok && hasConsent(S) && coachTakesPhotos(config, coachLocal)
   const r = S.routines.find(x => x.id === id)
   useEffect(() => { if (!r) nav('/plan') }, [!!r])
   // Editing here has no explicit "save" — every field change persists immediately. A single
@@ -441,6 +452,16 @@ export default function RoutineEdit() {
     }
   })
 
+  const addFromPhoto = () => transcribeSheet({
+    confirmLabel: () => t('Add to routine'),
+    onConfirm: rows => {
+      const added = routineExercises(rows)
+      if (!added.length) return
+      edit(x => { x.push(...added) })
+      toast(t('Added to {0}', r.name) + ' · ' + tn('{0} exercise', '{0} exercises', added.length))
+    },
+  })
+
   const units = supersetUnits(r.ex)
   const unitFirst = new Set(units.filter(u => u.length > 1).map(u => u[0]))
   // Each superset gets a letter and each member its place in the round (A1, A2, B1…), so the
@@ -503,7 +524,10 @@ export default function RoutineEdit() {
         had to be scrolled to the bottom before anything could be added. */}
     <div className="row between plan-sec-h routine-ex-h">
       <h4 className="sec">{t('Exercises')}</h4>
-      <Button size="sm" variant="tinted" icon="plus" data-tour="routine-add" onClick={addExercise}>{t('Add exercise')}</Button>
+      <div className="row" style={{ gap: 6 }}>
+        {fromPhoto && <Button size="sm" variant="ghost" icon="camera" onClick={addFromPhoto} aria-label={t('Add from a photo')}>{t('From a photo')}</Button>}
+        <Button size="sm" variant="tinted" icon="plus" data-tour="routine-add" onClick={addExercise}>{t('Add exercise')}</Button>
+      </div>
     </div>
     {r.ex.length ? <div ref={reorder.listRef} onClickCapture={reorder.onClickCapture}
       className={'list routine-list' + (reorder.drag ? ' is-reordering' : '')}>{r.ex.map((e, i) => {

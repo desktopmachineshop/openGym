@@ -1,4 +1,4 @@
-/* JSON schemas for the three answer shapes, handed to providers that can enforce a schema
+/* JSON schemas for the answer shapes, handed to providers that can enforce a schema
  * while decoding (Ollama/llama.cpp grammar sampling, LM Studio, vLLM, OpenAI json_schema).
  *
  * Deliberately flat: no $ref, no anyOf/oneOf, no additionalProperties tricks — llama.cpp's
@@ -145,4 +145,38 @@ export const ADAPT_SCHEMA = {
   required: ['coach_contract']
 };
 
-export const SCHEMAS = { review: REVIEW_SCHEMA, create: CREATE_SCHEMA, refine: CREATE_SCHEMA, debrief: DEBRIEF_SCHEMA, ask: ASK_SCHEMA, adapt: ADAPT_SCHEMA };
+// A workout read back from a photo or pasted text (the `transcribe` job): the exercises in the
+// order written, each with the sets as written, and the lines that could not be read. Flat and
+// scalar inside, like ADAPT_SCHEMA, for the providers that close every object (#804).
+export const TRANSCRIBE_SCHEMA = {
+  type: 'object',
+  properties: {
+    coach_contract: INT,
+    title: STR,
+    exercises: {
+      type: 'array',
+      maxItems: 40,
+      items: {
+        type: 'object',
+        properties: {
+          name: STR,
+          id: STR,
+          note: STR,
+          sets: {
+            type: 'array',
+            maxItems: 50,
+            items: {
+              type: 'object',
+              properties: { reps: INT, repsMax: INT, seconds: INT, weight: { type: 'number' }, unit: STR }
+            }
+          }
+        },
+        required: ['name', 'sets']
+      }
+    },
+    unreadable: STRINGS
+  },
+  required: ['coach_contract', 'exercises']
+};
+
+export const SCHEMAS = { review: REVIEW_SCHEMA, create: CREATE_SCHEMA, refine: CREATE_SCHEMA, debrief: DEBRIEF_SCHEMA, ask: ASK_SCHEMA, adapt: ADAPT_SCHEMA, transcribe: TRANSCRIBE_SCHEMA };

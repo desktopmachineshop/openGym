@@ -4,6 +4,9 @@ import { SYSTEM_PROMPT } from '../system-prompt.js';
 
 export const ANTHROPIC_VERSION = '2023-06-01';
 
+/** One photo as the Messages API's image content block (the Agent SDK takes the same block). */
+export const imageBlock = img => ({ type: 'image', source: { type: 'base64', media_type: img.type, data: img.data } });
+
 export const anthropicSpec = {
   id: 'anthropic',
   path: () => '/v1/messages',
@@ -17,13 +20,15 @@ export const anthropicSpec = {
   }),
   // The rules block is marked cacheable: identical for every job of a task, so subsequent
   // jobs read it from Anthropic's prompt cache at a tenth of the input price.
-  body: ({ model, prompt, system, maxTokens }) => ({
+  // A photo (the `transcribe` job) goes in front of the text, as the Messages API documents it
+  // reads best, as a base64 image block. It is in this request body and nowhere else.
+  body: ({ model, prompt, system, maxTokens, images }) => ({
     model,
     max_tokens: maxTokens,
     system: system
       ? [{ type: 'text', text: SYSTEM_PROMPT + '\n\n' + system, cache_control: { type: 'ephemeral' } }]
       : SYSTEM_PROMPT,
-    messages: [{ role: 'user', content: prompt }]
+    messages: [{ role: 'user', content: images && images.length ? [...images.map(imageBlock), { type: 'text', text: prompt }] : prompt }]
   }),
   errorMessage: data => data && data.error && data.error.message,
   readText: data => {

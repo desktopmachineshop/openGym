@@ -34,6 +34,7 @@ import { AdaptProposal, adaptTitle } from '../components/WorkoutCoachSheet.jsx'
 import { insightsFor, sessionInsights } from '../lib/coach-insights.js'
 import { useCoachStatus, requestReview, requestDebrief, requestPlan, refinePlan, askCoach, resolvePending, cohortStats, setCohortShare, jobErrorText, awaitedJob, settleAwaited, JOB_ERRORS, ensureAiConsent, isDeclined } from '../lib/coach-api.js'
 import { AiConsentSection } from '../components/CoachConsentSheet.jsx'
+import { photoWorkoutSheet } from '../components/TranscribeSheet.jsx'
 import { useCoachGate } from '../lib/use-coach-gate.js'
 import { confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -235,7 +236,16 @@ export default function CoachChat() {
       {pending && !job && pending.kind === 'adapt' && <div className="msg coach" style={{ maxWidth: '100%', width: '100%' }}>
         <AdaptProposal p={pending} onDone={refresh} />
       </div>}
-      {pending && !job && pending.kind !== 'ask' && pending.kind !== 'adapt' && (pending.kind === 'create'
+      {pending && !job && pending.kind === 'transcribe' && <div className="msg coach">
+        <div className="bub">
+          {t('A workout read from a photo is waiting to be checked.')}
+          <div className="row" style={{ gap: 8, marginTop: 8 }}>
+            <Button size="sm" variant="tinted" onClick={photoWorkoutSheet}>{t('Check it')}</Button>
+            <Button size="sm" onClick={() => resolvePending({ dismissed: true }).then(refresh, refresh)}>{t('Dismiss')}</Button>
+          </div>
+        </div>
+      </div>}
+      {pending && !job && pending.kind !== 'ask' && pending.kind !== 'adapt' && pending.kind !== 'transcribe' && (pending.kind === 'create'
         ? <PlanCard p={pending} S={S} update={update} toast={toast} nav={nav} refresh={refresh} />
         : pending.kind === 'debrief'
           ? <DebriefCard p={pending} S={S} update={update} toast={toast} refresh={refresh} />
@@ -314,7 +324,7 @@ function Typing({ S, kind, coachLocal, config }) {
     // local model rather than something wrong; the next line already warns it takes longer.
     eta = local ? '' : t('This usually takes a minute or two.')
   }
-  const doing = kind === 'create' ? t('Building your plan…') : kind === 'debrief' ? t('Looking at that session…') : kind === 'ask' ? t('Thinking about your question…') : kind === 'adapt' ? t('Looking at your workout…') : t('Reading your training…')
+  const doing = kind === 'create' ? t('Building your plan…') : kind === 'debrief' ? t('Looking at that session…') : kind === 'ask' ? t('Thinking about your question…') : kind === 'adapt' ? t('Looking at your workout…') : kind === 'transcribe' ? t('Reading the workout…') : t('Reading your training…')
   return <div className="msg coach">
     <div className="bub typing"><i /><i /><i /></div>
     <div className="typing-eta">

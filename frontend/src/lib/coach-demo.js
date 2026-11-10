@@ -18,7 +18,7 @@ import { isWarmupRow } from './workout-model.js'
 import { best1RM } from './onerm.js'
 import { fmtNum } from './format.js'
 import { planHash } from './coach.js'
-import { waitingProposal } from '../../../api/coach/core/pending.js'
+import { waitingProposal, isPassing } from '../../../api/coach/core/pending.js'
 import { t } from './i18n.js'
 
 const DELAY = 2200      // long enough to see "the Coach is thinking…", short enough to forgive
@@ -238,7 +238,7 @@ export const demoAdapt = (S, { today, entry, reason, activeId } = {}) => start('
     changes,
   }
 })
-export const demoResolve = () => { pending = pending?.kind === 'ask' || pending?.kind === 'adapt' ? waitingProposal(pending.prev) : null; return { ok: true } }
+export const demoResolve = () => { pending = isPassing(pending) ? waitingProposal(pending.prev) : null; return { ok: true } }
 export const demoDisclosure = () => ({
   provider: 'demo', providerLabel: t('the configured AI provider'),
   categories: ['plan', 'training', 'bodyweight', 'profile', 'prefs'], version: 1

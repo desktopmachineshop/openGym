@@ -54,6 +54,8 @@ import { useCoachGate } from '../lib/use-coach-gate.js'
 // opened a moment later (after a dynamic import) took the menu's history entry with it on close.
 import { workoutCoachSheet } from '../components/WorkoutCoachSheet.jsx'
 import { hasConsent } from '../lib/coach.js'
+import { coachTakesPhotos } from '../lib/coach-api.js'
+import { photoWorkoutSheet } from '../components/TranscribeSheet.jsx'
 import { sessionNoProg, setSessionNoProg, setEntryNoProg, joinSessionNoProg } from '../lib/session-noprog.js'
 import { glyphOf } from '../lib/glyphs.js'
 import { markAllSetsDone, sessionHistory } from '../lib/backfill.js'
@@ -80,9 +82,21 @@ import { isOn } from '../lib/modules.js'
 const HOLD_KEY_GRACE_MS = 1500
 
 /* ---------- start chooser (no active workout) ---------- */
+// "From a photo" (the Coach's `transcribe` job): a workout from a whiteboard, a screenshot or a
+// message, checked, then started as a freestyle session already filled in. Offered where the
+// Coach is set up and agreed to, and its provider reads photos.
+function useFromPhoto() {
+  const S = useStore(s => s.S)
+  const config = useStore(s => s.config)
+  const coachLocal = useStore(s => s.coachLocal)
+  const gate = useCoachGate()
+  return gate.ok && hasConsent(S) && coachTakesPhotos(config, coachLocal)
+}
+
 function StartChooser() {
   const nav = useNavigate()
   const S = useStore(s => s.S)
+  const fromPhoto = useFromPhoto()
   const todayIds = effectiveRoutineIds(S, todayISO())
   const todayRoutines = effectiveRoutines(S, todayISO())
   const todayName = todayRoutines.map(r => r.name).join(' + ')
@@ -106,6 +120,7 @@ function StartChooser() {
         <span className="tag acc">{t('Start')}</span></div>)}</div></>}
     <div style={{ height: 14 }} />
     <Button icon="shuffle" onClick={() => startFlow([])}>{t('Freestyle workout (pick as you go)')}</Button>
+    {fromPhoto && <><div style={{ height: 10 }} /><Button icon="camera" onClick={photoWorkoutSheet}>{t('Freestyle from a photo or screenshot')}</Button></>}
     {!S.routines.length && <><div style={{ height: 10 }} /><Button variant="primary" onClick={() => nav('/plan')}>{t('Build a plan first')}</Button></>}
   </div>
 }

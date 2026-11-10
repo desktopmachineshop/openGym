@@ -3,6 +3,8 @@
  *   check(cfg, env)                                  → { ok, version?, error? }
  *   invoke({ prompt, jobDir, env, model, timeoutMs }) → { code, text, stderr, timedOut, spawnError }
  *   spawns                                             true when a job runs a child process
+ *   images                                             true when invoke also takes `images`, a
+ *                                                      photo as [{ type, data (base64) }]
  *
  * `spawns` decides whether the privilege drop is required before a job may run. The three
  * runtime-backed adapters say true; the HTTPS ones in ../core/adapters say false, because a
@@ -29,10 +31,16 @@ const fixture = {
   id: 'fixture',
   spawns: true,
   cli: process.execPath,
+  // It takes a photo so the `transcribe` loop can be walked without an account. It is told what
+  // arrived (type and size, on a line of its own after the prompt), never the photo itself.
+  images: true,
   async check() { return { ok: true, version: 'fixture' }; },
-  async invoke({ prompt, jobDir, env, timeoutMs }) {
+  async invoke({ prompt, images, jobDir, env, timeoutMs }) {
+    const photos = Array.isArray(images) && images.length
+      ? '\n\nFIXTURE PHOTOS: ' + JSON.stringify(images.map(i => ({ type: i.type, chars: String(i.data || '').length })))
+      : '';
     const r = await run(process.execPath, [FIXTURE], {
-      stdin: prompt, cwd: jobDir, timeoutMs,
+      stdin: prompt + photos, cwd: jobDir, timeoutMs,
       // The fixture needs its mode knob, which the sanitised job env deliberately drops.
       env: { ...env, FIXTURE_MODE: process.env.FIXTURE_MODE || '' },
       asCoach: false   // a temp dir owned by root in tests; the fixture reads only stdin anyway

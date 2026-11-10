@@ -9,7 +9,9 @@ import * as jobs from './jobs.js';
 import { computeCohort } from './cohort.js';
 import { adapterFor } from './adapters/index.js';
 import { canDropPrivileges, privilegeRefusal } from './adapters/spawn.js';
-import { DATA_CATEGORIES } from './core/payload.js';
+import { DATA_CATEGORIES, ON_REQUEST_CATEGORIES } from './core/categories.js';
+import { TRANSCRIBE_TEXT_MAX } from './core/payload.js';
+import { checkPhoto } from './core/photo.js';
 import { validateBaseUrl, validateHeaders, baseUrlFor } from './core/providers.js';
 
 // Job failures the user sees, in the app's own voice. The raw provider detail never reaches
@@ -22,10 +24,11 @@ const USER_ERROR = {
   // Verbatim, because it tells the user the one thing that resolves it and names who resolves
   // it. A vaguer message here turns into a support question for the person running the box.
   shared: cfgStore.SHARED_ACCOUNT_REFUSAL,
-  unprivileged: 'the Coach is switched off on this instance for safety reasons'
+  unprivileged: 'the Coach is switched off on this instance for safety reasons',
+  noimages: 'the Coach on this instance cannot read photos'
 };
 const hostOf = url => { try { return url ? new URL(url).host : null; } catch { return null; } };
-const HTTP_FOR = { off: 503, busy: 409, cap: 429, consent: 403, shared: 409, unprivileged: 503 };
+const HTTP_FOR = { off: 503, busy: 409, cap: 429, consent: 403, shared: 409, unprivileged: 503, noimages: 400 };
 
 export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
   /** Every user route starts the same way: signed in, feature on, feature reachable. The class
@@ -60,6 +63,11 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         // Never the path, and the base URL cannot carry credentials (validateBaseUrl).
         host: hostOf(baseUrlFor(cfg.provider, cfg)),
         categories: DATA_CATEGORIES,
+        // What goes only when the person picks it, with the one job that sends it (a photo for
+        // `transcribe`), and whether this provider takes it at all: the app asks about a photo
+        // on its own, before the first one is sent.
+        onRequest: ON_REQUEST_CATEGORIES,
+        images: !!cfgStore.providerMeta(cfg).images,
         version: 1
       });
     },
@@ -153,6 +161,27 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       } catch (e) { failEnqueue(res, e); }
     },
 
+    // A workout found somewhere else, read back as exercises (the `transcribe` job): a photo, pasted
+    // text, or both. The answer is a list the phone shows for checking; nothing is applied here.
+    // The photo is checked (core/photo.js) and handed to the job in memory; it is not written
+    // anywhere on the way (jobs.js).
+    'POST /api/coach/transcribe': async (req, res) => {
+      const user = guard(req, res); if (!user) return;
+      const body = await readBody(req);
+      const text = typeof body.text === 'string' ? body.text.trim() : '';
+      let photo = null;
+      if (body.photo != null) {
+        const checked = checkPhoto(body.photo);
+        if (!checked.ok) return json(res, checked.code === 'toolarge' ? 413 : 400, { error: checked.error, code: checked.code });
+        photo = checked.photo;
+      }
+      if (!photo && !text) return json(res, 400, { error: 'a photo or some text is required', code: 'invalid' });
+      try {
+        const job = jobs.enqueue(user.id, { kind: 'transcribe', lang: body.lang, note: text.slice(0, TRANSCRIBE_TEXT_MAX) || null, photo });
+        json(res, 202, { job });
+      } catch (e) { failEnqueue(res, e); }
+    },
+
     /* How this profile sits against everyone else on the instance who opted in: medians only,
        at least three people, and nothing for a profile that does not share itself. */
     'GET /api/coach/cohort': async (req, res) => {
@@ -208,7 +237,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
         enabled: !!cfg.enabled,
         provider: cfg.provider,
         providers: Object.entries(cfgStore.PROVIDERS).map(([id, p]) => ({
-          id, label: p.label, runtime: p.runtime,
+          id, label: p.label, runtime: p.runtime, images: !!p.images,
           setupToken: !!p.setupToken, deviceLogin: !!p.deviceLogin, apiKey: !!p.apiKeyEnv,
           http: !!p.http, baseUrl: !!p.baseUrl, keyOptional: !!p.keyOptional, keyPlaceholder: p.keyPlaceholder || null,
           defaultModel: p.defaultModel || null,

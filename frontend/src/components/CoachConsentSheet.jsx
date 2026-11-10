@@ -3,13 +3,14 @@
 //
 // The lines below say what the payload actually carries (api/coach/core/payload.js build): one
 // per DATA_CATEGORIES entry, plus what you type, which rides along as the review note or the
-// refine text. Short on purpose; the intake's consent screen has the long version.
+// refine text. Short on purpose; the intake's consent screen has the long version. A photo (the
+// `transcribe` job, ON_REQUEST_CATEGORIES) is asked about on its own, the first time one would go.
 import { useEffect, useState } from 'react'
 import { useUI } from '../store/useUI.js'
 import { useStore } from '../store/useStore.js'
 import { t } from '../lib/i18n.js'
 import { fmtDate, isoOf } from '../lib/format.js'
-import { DATA_CATEGORIES } from '../../../api/coach/core/categories.js'
+import { DATA_CATEGORIES, ON_REQUEST_CATEGORIES } from '../../../api/coach/core/categories.js'
 import { aiConsents, withdrawAi, onAiConsentChange } from '../lib/coach-consent.js'
 import { emptyCoach } from '../lib/coach.js'
 import Icon from './Icon.jsx'
@@ -25,31 +26,37 @@ const LINES = {
   prefs: () => t('Your unit and language')
 }
 export const sharedLines = () => [...DATA_CATEGORIES.map(k => LINES[k]?.()).filter(Boolean), t('Anything you type to the Coach')]
+const ON_REQUEST = { photo: () => t('The photo or screenshot you pick, sent once and not kept') }
+export const photoLines = () => ON_REQUEST_CATEGORIES.map(k => ON_REQUEST[k]?.()).filter(Boolean)
 
-/** Resolves true for "Allow", false for "Not now" and for a sheet closed any other way. */
-export function askAiConsent(target) {
+/** Resolves true for "Allow", false for "Not now" and for a sheet closed any other way.
+ *  `photo`: this request sends a photo too; `already`: training data was allowed before, so only
+ *  the photo is asked about. */
+export function askAiConsent(target, { photo = false, already = false } = {}) {
   return new Promise(resolve => {
     let done = false
     const finish = v => { if (!done) { done = true; unsub && unsub(); resolve(v) } }
     const ui = useUI.getState()
-    const { id, close } = ui.openSheet(() => <ConsentSheet target={target} onAnswer={v => { finish(v); close() }} />)
+    const { id, close } = ui.openSheet(() => <ConsentSheet target={target} photo={photo} already={already} onAnswer={v => { finish(v); close() }} />)
     // Swiped away or closed from outside: that is a "not now", and the request must not hang.
     const unsub = useUI.subscribe?.(s => { if (!s.sheets.some(x => x.id === id)) finish(false) })
   })
 }
 
-function ConsentSheet({ target, onAnswer }) {
+function ConsentSheet({ target, photo, already, onAnswer }) {
   const server = target.via === 'server'
+  // Only the photo is new when training data was allowed before: say that, not the whole list again.
+  const lines = [...(already ? [] : sharedLines()), ...(photo ? photoLines() : [])]
   return <div className="ai-consent">
     <div className="ob-eyebrow">{t('Your data, your call')}</div>
-    <h3>{t('Send your training to {0}?', target.name)}</h3>
+    <h3>{already ? t('Send a photo to {0}?', target.name) : t('Send your training to {0}?', target.name)}</h3>
     <p className="muted" style={{ lineHeight: 1.5, margin: '6px 0 12px' }}>
       {server
         ? t('To answer, the Coach sends this through your openGym server to {0}, an AI service outside openGym that your server’s admin picked:', target.name)
         : t('To answer, this device sends this straight to {0}, an AI service outside openGym, with your API key:', target.name)}
     </p>
     <div className="ob-consent">
-      {sharedLines().map(line => <div key={line} className="ob-consent-row"><Icon name="check" /><div><span>{line}</span></div></div>)}
+      {lines.map(line => <div key={line} className="ob-consent-row"><Icon name="check" /><div><span>{line}</span></div></div>)}
     </div>
     <div className="ob-fine">
       <div>{t('Your name, email and sign-in stay put. {0} handles the rest under its own privacy terms.', target.name)}</div>
@@ -85,7 +92,7 @@ export function AiConsentSection() {
     footer={t('Who the Coach may send your training to from this device. Withdraw it and the Coach asks again next time. A model on your own network never needs asking.')}>
     {!list.length && <Row icon="lock" iconTint="var(--green)" title={t('Nothing allowed yet')} subtitle={t('The Coach asks before anything leaves.')} />}
     {list.map(c => <Row key={c.key} icon="shield" iconTint="var(--acc)" title={c.name}
-      subtitle={(c.via === 'server' ? t('Through your server') : t('With your API key')) + ' · ' + t('Allowed {0}', fmtDate(isoOf(new Date(c.at)), false, true))}>
+      subtitle={[c.via === 'server' ? t('Through your server') : t('With your API key'), c.photo ? t('Photos too') : null, t('Allowed {0}', fmtDate(isoOf(new Date(c.at)), false, true))].filter(Boolean).join(' · ')}>
       <Button size="sm" onClick={() => withdraw(c)}>{t('Withdraw')}</Button>
     </Row>)}
   </Section>

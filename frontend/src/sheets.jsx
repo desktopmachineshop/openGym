@@ -3529,6 +3529,30 @@ export function repeatWorkout(w, close) {
   bwSheet({ required: true, onDone: go })
 }
 
+// A freestyle session that opens already filled in: the exercises the Coach read from a photo or
+// pasted text (components/TranscribeSheet.jsx, lib/workout-transcribe.js), every set planned and
+// unticked. Started the way any workout starts, weigh-in first.
+export function startFilledWorkout({ name, entries, close }) {
+  if (S().active) { toast(t('Finish the current workout first.')); return }
+  if (!entries?.length) return
+  const go = bw => {
+    if (S().active) { toast(t('Finish the current workout first.')); return }
+    update(s => {
+      s.active = {
+        id: uid(), d: todayISO(), start: Date.now(), routineIds: [],
+        name: name || t('Freestyle'), bw: bw || null, cur: 0, entries,
+        workoutView: s.workoutView || 'cards',
+      }
+    })
+    useUI.getState().stopRest()
+    navToWorkout()
+    autoGymHere()
+  }
+  if (close) close()
+  if (S().weighIn === false || !isOn(S(), 'body')) { go(null); return }
+  bwSheet({ required: true, onDone: go })
+}
+
 /* ============================ log a past workout ============================ */
 // The same screen as a live session, pointed at another day. `backfill` on the active
 // session is what tells the workout screen to drop the clock and the rest timers, and tells

@@ -256,6 +256,54 @@ shapes, so a provider that closes every object for a strict schema (#804) can st
 The running session is sent the way a question sends it (`today`): exercise ids, targets and the
 sets' numbers, no notes, no media, and never the form videos of a set.
 
+### From a photo
+
+A workout found somewhere else (a gym's whiteboard, a screenshot of a post, a coach's message, a
+page of a notebook) can be turned into exercises instead of rebuilt by hand, one set at a time.
+**Freestyle from a photo or screenshot** sits under *Freestyle workout* on the Start screen, and
+**From a photo** next to *Add exercise* in the routine editor. Pick a picture, paste text as well
+if you like (or only text), and the Coach reads it back: the exercises **in the order written**,
+each with its sets as written (reps or seconds, a rep range, a weight and its unit when one is
+written), and a list of the lines it could not read. A review sheet shows each exercise as
+written beside what it matched in the library; change a match with the exercise picker, pick
+among several matches, edit or remove a set, remove an exercise. Confirm, and the Start screen
+opens a freestyle session already filled in, or the routine gets the exercises appended. Nothing
+is logged: every set arrives planned and unticked, as if picked by hand. A weight that was not
+written opens at last time's for that exercise, and one written in the other unit is converted.
+
+It is a job kind of its own (`transcribe`, `POST /api/coach/transcribe`,
+`api/coach/prompts/transcribe.md`, `validateTranscribe`). The answer names exercises by the
+library's ids only, and only when the model is sure: an id that is not an exercise in the library
+(or one of yours) is dropped rather than repaired, and every entry without one is matched by its
+name the way an import matches it (`frontend/src/lib/log-workout.js` `resolveExercise`). The
+review's logic is `frontend/src/lib/workout-transcribe.js`, tested beside it. A reading holds the
+Coach's pending slot for a day at most, and gives back the suggestion it stood in front of; the
+Coach chat offers it again if the sheet was closed while it waited.
+
+**Which providers take a photo.** A provider says so (`images` in `api/coach/config.js` and
+`core/providers.js`), and the photo action is shown only when the one in use does:
+
+| Provider | Photos |
+| --- | --- |
+| Anthropic API (server, or a phone with its own key) | yes: an `image` content block in front of the text |
+| Claude Agent SDK (the `coach` image) | yes: the job's one user message goes to the SDK as streaming input, with the same image block |
+| Fixture | yes, so the loop can be walked without an account: it is told a photo arrived and how big, never sees it, and answers a fixed workout (or reads simple pasted lines) |
+| OpenAI, Gemini, compatible endpoints, Codex CLI | not yet: no photo action |
+
+**What is sent, and what is kept.** The app redraws the picture on a canvas before it leaves:
+its longest edge at 1568 px, as a JPEG, which also drops its EXIF (location, camera). The server
+takes JPEG, PNG or WebP whose bytes match the type named, up to 4,000,000 base64 characters
+(about 3 MB, inside the 5 MB request limit), and refuses anything else before a job is queued
+(`api/coach/core/photo.js`). The payload itself carries only the pasted text, a flag that a photo
+is attached, your unit and language, and a slice of the exercise library to match against: none
+of your plan, log, body weight or Coach answers. The photo rides beside the payload for that one
+job (and its one repair round) and is **kept nowhere**: not in your profile, not in the Coach's
+file of your proposals and history, not in the instance's job log, not in the job directory, which
+is removed when the job ends. On the server it lives on the in-memory job until that job finishes
+or is forgotten; with the Agent SDK it goes over the runtime's stdin pipe, like the prompt, and is
+never written to a file; on a phone with its own key it goes in the one HTTPS request. The reading
+that comes back is what is kept, until you add it or dismiss it.
+
 ### Warm-ups and programmes
 
 A review can now also:
@@ -353,6 +401,10 @@ renders from, so the screen cannot drift from the payload — are:
 | `cohort` (optional) | only with comparison on and your own opt-in: anonymous medians from the other people sharing — never their data, and never yours to them beyond the same medians |
 | `prefs` | unit, language, effort scale |
 
+One more category is never part of a job unless you pick it for that job: **`photo`**, a photo
+or screenshot you choose for *From a photo* (the `transcribe` job, above), sent with that job
+alone and not kept. That job sends none of the categories above except your unit and language.
+
 ### Asking before it goes
 
 Before the first request that would send anything to an AI provider, the app asks once: a sheet
@@ -367,6 +419,12 @@ it back. Switching on automatic reviews asks too, and withdrawing the server's p
 them off. The demo, and a model on your own machine or network (localhost, private and Tailscale
 addresses, `*.local`/`*.lan`), never ask: nothing goes to a third party. `GET /api/coach/disclosure`
 names the host for this, never the rest of the URL.
+
+A photo is asked about on its own. The first time one would go to a provider, the sheet lists it
+(*The photo or screenshot you pick, sent once and not kept*), alone if the rest was allowed before,
+and the yes for it is kept on the same record; a yes given only for training data does not cover
+photos. **AI data sharing** shows *Photos too* on a provider that has it. The disclosure lists the
+photo as `onRequest` and says whether the provider takes one (`images`).
 
 A review reads a training block, not a training career: the window is capped at **12 weeks or 60
 sessions**. Your profile is identified by a stable pseudonym that is never the user id and never
@@ -509,6 +567,14 @@ reason it can be trusted next to your `./data`:
 
 They are exported as one frozen object and asserted by value in `adapters.test.js`, so
 re-enabling one is a red build rather than a quiet capability grant.
+
+A photo (the `transcribe` job) changes none of them. A string prompt cannot carry an image, so
+for that job the adapter hands the SDK its one user message as streaming input: a single message
+whose content is the image block and then the prompt, the Messages API's own shape. The SDK
+writes it to the runtime's stdin, the same pipe the string went down, and closes stdin once it is
+sent. No file is written for it, so the model needs no tool to see it and gets none; the runtime
+is the same `coach` child, spawned by the same `spawnClaudeCodeProcess`, with the same environment.
+`coach-transcribe.test.js` asserts the message and that every LOCKDOWN option is still passed.
 
 The credential reaches the model process as an environment variable and by no other route. The
 job environment is built from nothing rather than filtered, and the SDK's `env` option *replaces*
