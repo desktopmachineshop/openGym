@@ -19,7 +19,9 @@
 //     riding into a backup or a sync.
 import * as payloadLib from '../../../api/coach/core/payload.js'
 import { runPipeline } from '../../../api/coach/core/pipeline.js'
-import { waitingProposal } from '../../../api/coach/core/pending.js'
+import { waitingProposal, isPassing } from '../../../api/coach/core/pending.js'
+import { ON_REQUEST_CATEGORIES } from '../../../api/coach/core/categories.js'
+import { checkPhoto } from '../../../api/coach/core/photo.js'
 import { isDue } from '../../../api/coach/core/due.js'
 import { HTTP_PROVIDERS, baseUrlFor, phoneMayCall } from '../../../api/coach/core/providers.js'
 import anthropic from '../../../api/coach/core/adapters/anthropic.js'
@@ -41,6 +43,7 @@ export const TIMEOUT_MS = 5 * 60000
 export const LOCAL_ENDPOINT_TIMEOUT_MS = 25 * 60000
 export const timeoutFor = provider => (provider === 'compatible' ? LOCAL_ENDPOINT_TIMEOUT_MS : TIMEOUT_MS)
 const PENDING_DAYS = 14
+const TRANSCRIBE_HOURS = 24   // as on the server (api/coach/jobs.js)
 const HANDLE_LENGTH = 16
 
 let job = null
@@ -96,7 +99,7 @@ async function bumpDaily() {
 
 export async function localStatus() {
   const d = await loadCoachDevice()
-  if (d.pending && d.pending.expiresAt && d.pending.expiresAt < Date.now()) await saveCoachDevice({ pending: null })
+  if (d.pending && d.pending.expiresAt && d.pending.expiresAt < Date.now()) await saveCoachDevice({ pending: isPassing(d.pending) ? waitingProposal(d.pending.prev) : null })
   return { job, pending: (await loadCoachDevice()).pending || null, cap: await capState(), lastError, last, maxMessageLen: coachLimits(d).maxMessageLen }
 }
 
@@ -123,6 +126,23 @@ export const localAdapt = async (S, { today, entry, reason, text, activeId } = {
     today: today || null, focus: { entry, reason }, activeId: typeof activeId === 'string' ? activeId : null,
     note: text ? String(text).slice(0, coachLimits(d).maxMessageLen) : null,
   })
+}
+
+// A workout found somewhere else, read back as exercises (the `transcribe` job): a photo, pasted
+// text or both. The photo is checked as the server checks it, goes to the provider in this one
+// call, and is never written to the device file: only the reading is.
+export const localTranscribe = async (S, { photo, text } = {}) => {
+  const d = await loadCoachDevice()
+  let checked = null
+  if (photo) {
+    const r = checkPhoto(photo)
+    if (!r.ok) throw Object.assign(new Error(r.code === 'toolarge' ? t('That photo is too large to send. Try a smaller one or a screenshot.') : t('That file isn’t a photo the Coach can read.')), { status: r.code === 'toolarge' ? 413 : 400, code: r.code })
+    if (!ADAPTERS[d.provider]?.images) throw Object.assign(new Error(t('The Coach on this phone can’t read photos.')), { status: 400, code: 'noimages' })
+    checked = r.photo
+  }
+  const note = String(text || '').trim().slice(0, payloadLib.TRANSCRIBE_TEXT_MAX)
+  if (!checked && !note) throw Object.assign(new Error(t('Pick a photo or paste a workout first.')), { status: 400, code: 'invalid' })
+  return start(S, 'transcribe', { note: note || null, photo: checked })
 }
 
 /* Automatic reviews. On a server the cadence tick runs them (api/coach/cadence.js); a phone with
@@ -155,7 +175,7 @@ const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().
 // A read answer gives back the proposal it was asked beside, as the server does.
 export async function localResolve() {
   const d = await loadCoachDevice()
-  await saveCoachDevice({ pending: d.pending?.kind === 'ask' || d.pending?.kind === 'adapt' ? waitingProposal(d.pending.prev) : null })
+  await saveCoachDevice({ pending: isPassing(d.pending) ? waitingProposal(d.pending.prev) : null })
   return { ok: true }
 }
 export async function localForget() { job = null; lastError = null; await saveCoachDevice({ pending: null, daily: null, reviewedAt: null }); return { ok: true } }
@@ -166,7 +186,7 @@ export async function localDisclosure() {
   const base = d.provider ? baseUrlFor(d.provider, cfgOf(d)) : ''
   return {
     provider: d.provider, providerLabel: meta.label || t('the configured AI provider'),
-    categories: payloadLib.DATA_CATEGORIES, version: 1,
+    categories: payloadLib.DATA_CATEGORIES, onRequest: ON_REQUEST_CATEGORIES, images: !!ADAPTERS[d.provider]?.images, version: 1,
     // The honest difference from the self-hosted flow: it is the user's own account.
     payer: 'you', host: hostOf(base)
   }
@@ -205,6 +225,7 @@ async function run(S, kind, opts, d, adapter) {
   const key = await getApiKey()
   const payload = payloadLib.build(S, {
     handle: await handle(), kind, intake: opts.intake, note: opts.note, refine: opts.refine, previous: opts.previous, workoutId: opts.workoutId, today: opts.today, focus: opts.focus,
+    photo: !!opts.photo,
     lang: getLang()   // what the app shows, which a profile that never picked a language does not store (#303)
   })
   const model = d.model || HTTP_PROVIDERS[d.provider].defaultModel
@@ -212,8 +233,11 @@ async function run(S, kind, opts, d, adapter) {
   // simpler request is asked that way first instead of paying for the same 400s every launch.
   const base = baseUrlFor(d.provider, cfgOf(d))
   if (d.compat && d.compat.provider === d.provider && d.compat.base === base && d.compat.model === model) rememberCompatProfile(d.provider, cfgOf(d), model, d.compat.steps)
+  // The photo is for this call (and its repair round) only; `opts` is dropped when the job ends.
+  const images = opts.photo ? [opts.photo] : null
+  opts.photo = null
   const attempt = await runPipeline({
-    adapter, cfg: cfgOf(d), kind, payload,
+    adapter, cfg: cfgOf(d), kind, payload, images,
     model, timeoutMs: timeoutFor(d.provider),
     invokeOpts: { env: envOf(d, key), fetch: guardedFetch, maxTokens: coachLimits(d).maxOutputTokens }
   })
@@ -246,10 +270,10 @@ async function run(S, kind, opts, d, adapter) {
     return
   }
   const pending = {
-    id: job.id, kind, createdAt: Date.now(), expiresAt: Date.now() + PENDING_DAYS * 86400000,
+    id: job.id, kind, createdAt: Date.now(), expiresAt: Date.now() + (kind === 'transcribe' ? TRANSCRIBE_HOURS * 3600000 : PENDING_DAYS * 86400000),
     planHash: planHash(S), iteration: opts.iteration || 1,
     ...(kind === 'debrief' ? { workout: workoutMetaOf(S, opts.workoutId) } : {}),
-    ...(kind === 'ask' || kind === 'adapt' ? { prev: waitingProposal((await loadCoachDevice()).pending) } : {}),
+    ...(isPassing({ kind }) ? { prev: waitingProposal((await loadCoachDevice()).pending) } : {}),
     ...(kind === 'adapt' ? { activeId: opts.activeId || null, focus: payload.focus } : {}),
     ...attempt.result
   }

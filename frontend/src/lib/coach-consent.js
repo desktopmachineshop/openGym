@@ -78,14 +78,19 @@ async function save(next) {
   listeners.forEach(fn => { try { fn() } catch { /* a listener's problem */ } })
 }
 
-export async function hasAiConsent(target) {
+// A photo (the `transcribe` job) is a category of its own: the yes for it is kept on the same
+// record (`photo: true`), and a record without it is asked again before the first photo goes.
+export async function hasAiConsent(target, { photo = false } = {}) {
   if (!target) return false
-  return !!(await load()).list[target.key]
+  const rec = (await load()).list[target.key]
+  return !!rec && (!photo || rec.photo === true)
 }
-export async function allowAi(target) {
+export async function allowAi(target, { photo = false } = {}) {
   const c = await load()
   const { key, via, provider, host, name } = target
-  await save({ list: { ...c.list, [key]: { via, provider, host, name, at: new Date().toISOString() } } })
+  const had = c.list[key]
+  const photos = photo || had?.photo === true
+  await save({ list: { ...c.list, [key]: { via, provider, host, name, at: new Date().toISOString(), ...(photos ? { photo: true } : {}) } } })
 }
 export async function withdrawAi(key) {
   const c = await load()

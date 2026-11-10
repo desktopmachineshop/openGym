@@ -13,6 +13,7 @@ import { t, tn, getLang } from './i18n.js'
 import { useStore } from '../store/useStore.js'
 import { todayForCoach } from './coach-context.js'
 import { useUI } from '../store/useUI.js'
+import { HTTP_PROVIDERS } from '../../../api/coach/core/providers.js'
 
 const POLL_MS = 3000        // a job is running: often enough to feel live
 const IDLE_MS = 60000       // a Coach screen is open but nothing is running
@@ -71,13 +72,15 @@ export const settleAwaited = id => { if (!id || awaited === id) awaited = null }
    'declined' and `quiet`, which the screens let pass without a toast: you said no, you know. */
 export const coachVia = () => (DEMO ? 'demo' : LOCAL() ? 'device' : 'server')
 export const isDeclined = e => e?.code === 'declined'
-export async function ensureAiConsent() {
+// `photo`: this request sends a photo too (the `transcribe` job). A photo is its own category,
+// so a yes given before photos existed, or for training data alone, is asked again about it.
+export async function ensureAiConsent({ photo = false } = {}) {
   if (DEMO) return true
   const { consentTarget, hasAiConsent, allowAi } = await import('./coach-consent.js')
   const target = consentTarget(await disclosure(), coachVia())
-  if (!target || target.local || await hasAiConsent(target)) return true
+  if (!target || target.local || await hasAiConsent(target, { photo })) return true
   const { askAiConsent } = await import('../components/CoachConsentSheet.jsx')
-  if (await askAiConsent(target)) { await allowAi(target); return true }
+  if (await askAiConsent(target, { photo, already: photo && await hasAiConsent(target) })) { await allowAi(target, { photo }); return true }
   throw Object.assign(new Error(t('Okay, nothing was sent.')), { code: 'declined', quiet: true, data: { code: 'declined' } })
 }
 const asked = fn => async (...a) => { await ensureAiConsent(); return fn(...a) }
@@ -106,6 +109,26 @@ const _requestAdapt = async ({ entry, reason, text } = {}) => {
   return DEMO ? (await demo()).demoAdapt(st, body) : LOCAL() ? (await local()).localAdapt(st, body) : api('/api/coach/adapt', { method: 'POST', body: JSON.stringify({ ...body, lang: getLang() }) })
 }
 export const requestAdapt = (...a) => asked(_requestAdapt)(...a).then(track)
+
+/* A workout found somewhere else, read back as exercises (the `transcribe` job): `photo` is
+   { type, data } from lib/photo-upload.js, `text` what was pasted; either may be missing. The
+   photo goes with this one request and is kept nowhere: not in S, not in the Coach's log, not on
+   the server once the job ends. Asked about on its own the first time (ensureAiConsent). */
+const _requestTranscribe = async ({ photo, text } = {}) => {
+  const body = { ...(photo ? { photo } : {}), text: String(text || '').trim() }
+  return LOCAL() ? (await local()).localTranscribe(S(), body) : api('/api/coach/transcribe', { method: 'POST', body: JSON.stringify({ ...body, lang: getLang() }) })
+}
+export async function requestTranscribe(opts = {}) {
+  await ensureAiConsent({ photo: !!opts.photo })
+  return _requestTranscribe(opts).then(track)
+}
+/** Whether the Coach here can be sent a photo: the server's provider says so in /api/config, a
+ *  phone with its own key by the provider it picked. The demo has nobody to read one. */
+export function coachTakesPhotos(config, coachLocal, { demo = DEMO, mobile = MOBILE } = {}) {
+  if (demo) return false
+  if (mobile && coachLocal?.mode === 'byok') return !!HTTP_PROVIDERS[coachLocal.provider]?.images
+  return !!config?.coach?.images
+}
 // An automatic review, if one is due (lib/coach-schedule.js asks while the app is open). Only a
 // phone with its own key runs them here; a server runs its own on its tick. The data-sharing
 // question was asked when they were switched on, and nobody is there to ask it now: a "yes"
@@ -228,6 +251,8 @@ export const JOB_ERRORS = {
   // The refusal at enqueue when the process cannot drop privileges (api/coach/jobs.js). The same
   // words as api/coach/routes.js USER_ERROR.unprivileged; what to fix goes to the admin card.
   get unprivileged() { return t('The Coach is switched off on this instance for safety reasons.') },
+  get noimages() { return t('The Coach on this instance can’t read photos.') },
+  get toolarge() { return t('That’s too much to send to the Coach in one go.') },
   get internal() { return t('Something went wrong on the server.') }
 }
 
